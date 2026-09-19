@@ -108,6 +108,7 @@ function renderLive() {
   ].map(([l, v, s]) => `<div><div class="v num">${v}</div><div class="l">${esc(l)}${s ? ` · ${esc(s)}` : ''}</div></div>`).join('');
 
   renderMoveCards();
+  if (typeof edgeLive === 'function') edgeLive(); // Edge Finder: top edges on the Live tab (edge.js)
   renderHero(live, pre);
   renderHeroSide();
 
@@ -186,7 +187,7 @@ function renderHero(live, pre) {
   if (myLive.length) {
     // Your sweat: every live leg, most urgent first.
     const rows = myLive.map((l) => ({ l, g: gameById(l.gid), now: legNow(gameById(l.gid), l) })).sort((a, b) => Math.abs(a.now) - Math.abs(b.now));
-    hero.innerHTML = `<div class="hero-lab"><b><span class="dot pulse"></span>Your sweat</b><span>${plural(myLive.length, 'live bet')}</span></div>
+    hero.innerHTML = `<div class="hero-lab"><b><span class="dot pulse"></span>Your sweat</b><button type="button" class="sweat-open" data-sweat-open>${plural(myLive.length, 'live bet')} · Sweat mode ${ICON.chev}</button></div>
       <div class="card hcard">${rows.map(({ l, g, now }) => sweatRow(l, g, now)).join('')}</div>`;
     return;
   }
@@ -341,7 +342,7 @@ function renderLearn() {
 
 // ------------------------------------------------------------ BOARD
 const FILTERS = [
-  ['all', 'All'], ['top25', 'Top 25'], ['mine', 'My teams'], ['bets', 'My bets'], ['moving', 'Moving'], ['live', 'Live'],
+  ['all', 'All'], ['top25', 'Top 25'], ['mine', 'My teams'], ['bets', 'My bets'], ['moving', 'Moving'], ['live', 'Live'], ['edges', 'Edges'],
   ['SEC', 'SEC'], ['Big Ten', 'Big Ten'], ['Big 12', 'Big 12'], ['ACC', 'ACC'], ['American', 'American'], ['Mountain West', 'MWC'],
   ['Sun Belt', 'Sun Belt'], ['MAC', 'MAC'], ['C-USA', 'C-USA'], ['Pac-12', 'Pac-12'], ['Independent', 'Ind.'],
 ];
@@ -352,6 +353,7 @@ function passes(g, f) {
   if (f === 'bets') return S.bets.some((b) => b.legs.some((l) => l.gid === g.id));
   if (f === 'moving') return (g.open?.s != null && g.mkt?.s != null && Math.abs(g.mkt.s - g.open.s) >= 1.5) || (g.open?.t != null && g.mkt?.t != null && Math.abs(g.mkt.t - g.open.t) >= 2) || (g.moves || []).some((m) => serverNow() - m.t < 6 * 3600e3);
   if (f === 'live') return isLive(g);
+  if (f === 'edges') return typeof edgeGame === 'function' && edgeGame(g);
   return g.home.conf === f || g.away.conf === f;
 }
 function matchesQuery(g) {
@@ -413,15 +415,15 @@ function pxCell(g, mkt, side, book, best, opts = {}) {
   if (!p || (p.odds == null && p.line == null)) return `<span class="px na" aria-hidden="true">—</span>`;
   const isBest = best && best.book === book && !isFinal(g);
   const L = mkt === 'h1' ? g.h1?.[book] : isLive(g) ? g.live?.[book] : g.books?.[book];
-  const flash = S.flashed.has(`${g.id}|${book}|${mkt === 'h1' ? 's' : mkt}`);
+  const flash = flashAttr(g.id, mkt === 'h1' ? 'h1' : isLive(g) ? 'live' : 'pre', book, m);
   const main = m === 'ml' ? fmtOdds(p.odds) : mkt === 't' ? `${side === 'over' ? 'o' : 'u'}${fmtTot(p.line)}` : fmtPts(p.line);
   const sub = opts.sub ?? (m === 'ml' ? '' : fmtOdds(p.odds));
   const who = side === 'over' ? 'Over' : side === 'under' ? 'Under' : teamName(g[side]);
   const old = isOld(L);
-  const label = [bookFull(book), `${who} ${m === 'ml' ? fmtOdds(p.odds) : mkt === 't' ? fmtTot(p.line) : fmtPts(p.line)}`, m === 'ml' ? '' : fmtOdds(p.odds), isBest ? 'best price' : '', L?.m ? 'typed in' : '', old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
-  const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash ? ' tick' : ''}${old ? ' old' : ''}`;
-  if (isFinal(g)) return `<span class="${cls}" aria-label="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
-  return `<button type="button" class="${cls}" data-bet="${g.id}|${m}|${side}|${book}" aria-label="${esc(label)}" title="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+  const label = [bookFull(book), `${who} ${m === 'ml' ? fmtOdds(p.odds) : mkt === 't' ? fmtTot(p.line) : fmtPts(p.line)}`, m === 'ml' ? '' : fmtOdds(p.odds), isBest ? 'best price' : '', L?.m ? 'typed in' : '', flash.label, old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
+  const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash.cls}${old ? ' old' : ''}`;
+  if (isFinal(g)) return `<span class="${cls}"${flash.style} aria-label="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
+  return `<button type="button" class="${cls}"${flash.style} data-bet="${g.id}|${m}|${side}|${book}" aria-label="${esc(label)}" title="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}${typeof edgeBadge === 'function' ? edgeBadge(g, m, side, book) : ''}</button>`;
 }
 function bestFor(g, mkt, side) {
   const books = mkt === 'h1' ? g.h1 : isLive(g) ? g.live : g.books;
@@ -571,7 +573,7 @@ function renderBets() {
     list = resultsView();
   }
   $('#betsBody').innerHTML = `${top}
-    <div class="row-btns" style="margin-top:var(--s2)"><button class="btn" type="button" data-newbet>${ICON.plus} Log a bet</button>${S.bets.length ? `<a class="btn ghost" href="/api/bets.csv" download>Export CSV</a>` : ''}</div>
+    <div class="row-btns" style="margin-top:var(--s2)"><button class="btn" type="button" data-newbet>${ICON.plus} Log a bet</button>${openLegs().some((l) => isLive(gameById(l.gid))) ? `<button class="btn ghost" type="button" data-sweat-open><span class="dot pulse"></span>Sweat mode</button>` : ''}${S.bets.length ? `<a class="btn ghost" href="/api/bets.csv" download>Export CSV</a>` : ''}</div>
     <div style="margin-top:var(--s3)">${list}</div>`;
 }
 

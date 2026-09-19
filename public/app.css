@@ -285,8 +285,29 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .px.man::after{content:"";position:absolute;top:4px;left:4px;width:5px;height:5px;border-radius:50%;background:var(--ink-2)}
 .px.best.man::after{background:var(--surface)}
 .px.old{opacity:.5}
-.px.tick{animation:tick 2.4s var(--ease)}
-@keyframes tick{0%{box-shadow:inset 0 0 0 2px var(--accent)}100%{box-shadow:inset 0 0 0 2px transparent}}
+
+/* A price that just moved: a wash of the live red with a small pop, fading back over 2.4 s.
+   Redraws resume it where it was (live.js flashAttr sets a negative animation-delay). */
+.px.tick{animation:tick 2.4s var(--ease);will-change:background-color,transform}
+.px.tick small{animation:tick-sub 2.4s var(--ease);animation-delay:inherit}
+@keyframes tick{
+  0%{background-color:color-mix(in srgb,var(--accent) 26%,var(--surface));color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent);transform:scale(1.06)}
+  14%{transform:scale(1)}
+  55%{background-color:color-mix(in srgb,var(--accent) 12%,var(--surface));color:var(--accent);box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+  100%{background-color:var(--surface);color:var(--ink);box-shadow:inset 0 0 0 1.5px transparent;transform:none}}
+@keyframes tick-sub{0%,55%{color:color-mix(in srgb,var(--accent) 80%,var(--ink-2))}100%{color:var(--ink-2)}}
+/* the black best-price pill flashes solid red and settles back to black */
+.px.best.tick{animation-name:tick-best}
+.px.best.tick small{animation-name:none}
+@keyframes tick-best{
+  0%{background-color:var(--accent);color:var(--on-accent);transform:scale(1.06)}
+  14%{transform:scale(1)}
+  55%{background-color:color-mix(in srgb,var(--accent) 55%,var(--ink));color:var(--surface)}
+  100%{background-color:var(--ink);color:var(--surface);transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .px.tick{background-color:color-mix(in srgb,var(--accent) 16%,var(--surface));color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+  .px.best.tick{background-color:var(--accent);color:var(--on-accent)}
+}
 .br-f{display:flex;align-items:center;gap:10px;margin-top:2px;min-height:40px;width:100%;text-align:left;font-size:12px;color:var(--ink-2);flex-wrap:wrap}
 .br-f .sep{width:3px;height:3px;border-radius:50%;background:var(--ink-3)}
 .br-f b{color:var(--ink);font-weight:600}
@@ -362,6 +383,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
   .btable.m-s .c-t,.btable.m-s .c-ml,.btable.m-t .c-s,.btable.m-t .c-ml,.btable.m-ml .c-s,.btable.m-ml .c-t{display:none}
 }
 .addnum{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;width:100%;border-top:1px solid var(--line);font-size:14px;font-weight:600;color:var(--ink)}
+.addnum svg{width:16px;height:16px;flex:none}
 
 .splits{padding:var(--s2)}
 .sp + .sp{margin-top:var(--s2);padding-top:var(--s2);border-top:1px solid var(--line)}
@@ -520,6 +542,7 @@ textarea.inp{height:72px;padding:12px 14px;font-size:15px;font-weight:500;resize
 @keyframes sheetin{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
 .dlg-in{position:relative;overflow:auto;max-height:inherit;padding:12px var(--gutter) calc(var(--s4) + env(safe-area-inset-bottom));overscroll-behavior:contain}
 .dlg-close{position:sticky;top:0;float:right;z-index:5;margin:0 0 -32px}
+.dlg-close{box-shadow:0 1px 2px rgba(0,0,0,.08),0 4px 14px -4px rgba(0,0,0,.25)} /* it stays pinned while the sheet scrolls, so lift it off whatever passes underneath */
 .grab{width:36px;height:5px;border-radius:3px;background:var(--line);margin:0 auto var(--s2)}
 .dlg h2{font-size:28px;font-weight:650;letter-spacing:-.035em;margin:0;line-height:1.1}
 .dlg .lede{font-size:15px;color:var(--ink-2);margin:6px 0 0}
@@ -666,4 +689,12 @@ textarea.inp{height:72px;padding:12px 14px;font-size:15px;font-weight:500;resize
 }
 @media (min-width:1024px){
   .hero-side-first:not(:empty) + .hero{margin-top:var(--s4)}
+}
+
+/* game sheet header on phones: two-word school names wrap instead of truncating */
+@media (max-width:1023px){
+  .gs-t{gap:8px}
+  .gs-t img{width:32px;height:32px}
+  .gs-t .n{white-space:normal;overflow:visible;font-size:15px;line-height:1.15;overflow-wrap:anywhere}
+  .gs-t .s{font-size:34px}
 }

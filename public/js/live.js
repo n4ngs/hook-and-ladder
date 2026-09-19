@@ -50,16 +50,33 @@ async function openWeek(id) {
 
 // ------------------------------------------------------------ price flashes
 // Remember each visible price so the board can flash the ones that just moved.
+// Pregame, live and first-half prices are separate numbers, so each gets its own key.
+const FLASH_MS = 2400;
+const flashKey = (gid, src, book, m) => `${gid}|${src}|${book}|${m}`;
 function notePrices(prev, g) {
   if (!prev) return;
-  for (const [k, L] of Object.entries(g.books || {})) {
-    const P = prev.books?.[k];
-    if (!P) continue;
-    if (P.s !== L.s || P.so?.[0] !== L.so?.[0]) S.flashed.add(`${g.id}|${k}|s`);
-    if (P.t !== L.t || P.to?.[0] !== L.to?.[0]) S.flashed.add(`${g.id}|${k}|t`);
-    if (P.ml?.[0] !== L.ml?.[0]) S.flashed.add(`${g.id}|${k}|ml`);
-  }
-  setTimeout(() => { for (const k of [...S.flashed]) if (k.startsWith(`${g.id}|`)) S.flashed.delete(k); }, 2600);
+  const now = Date.now();
+  const diff = (src, cur, old, fields) => {
+    for (const [k, L] of Object.entries(cur || {})) {
+      const P = old?.[k];
+      if (!P || !L) continue;
+      for (const [m, a, b] of fields(P, L)) if (a !== b && !(a == null && b == null)) S.flashed.set(flashKey(g.id, src, k, m), now);
+    }
+  };
+  const full = (P, L) => [['s', P.s, L.s], ['s', P.so?.[0], L.so?.[0]], ['t', P.t, L.t], ['t', P.to?.[0], L.to?.[0]], ['ml', P.ml?.[0], L.ml?.[0]], ['ml', P.ml?.[1], L.ml?.[1]]];
+  diff('pre', g.books, prev.books, full);
+  diff('live', g.live, prev.live, full);
+  diff('h1', g.h1, prev.h1, (P, L) => [['h1s', P.s, L.s], ['h1s', P.so?.[0], L.so?.[0]], ['h1t', P.t, L.t], ['h1t', P.to?.[0], L.to?.[0]]]);
+  // Redraw once the flash has run its course, so reduced-motion outlines clear on time.
+  clearTimeout(notePrices.t);
+  notePrices.t = setTimeout(invalidate, FLASH_MS + 50);
+}
+// Class and inline delay for a price cell. Redraws resume the animation where it was instead of restarting it.
+function flashAttr(gid, src, book, m) {
+  const at = S.flashed.get(flashKey(gid, src, book, m));
+  const age = at == null ? Infinity : Date.now() - at;
+  if (age >= FLASH_MS) { if (at != null) S.flashed.delete(flashKey(gid, src, book, m)); return { cls: '', style: '', label: '' }; }
+  return { cls: ' tick', style: ` style="animation-delay:-${age}ms"`, label: 'just moved' };
 }
 
 // ------------------------------------------------------------ event stream
@@ -79,6 +96,7 @@ function connect() {
     w.games.set(g.id, g);
     if (prev) watchGame(prev, g);
     if (S.game?.game?.id === g.id) S.game.game = g;
+    document.dispatchEvent(new CustomEvent('hl:game', { detail: { prev, g } }));
     invalidate();
   });
   on('move', (m) => {

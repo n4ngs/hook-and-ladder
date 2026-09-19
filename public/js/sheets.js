@@ -45,6 +45,9 @@ async function fetchGame(gid) {
 }
 let lastPaint = 0;
 function refreshSheet() {
+  // Feature sheets repaint themselves on live data (sweat.js, tmachine.js, edge.js).
+  const hook = { sweat: 'sweatRefresh', tm: 'tmRefresh', edges: 'edgeRefresh' }[S.sheet?.kind];
+  if (hook) { if (typeof window[hook] === 'function') window[hook](); return; }
   if (S.sheet?.kind !== 'game' || !S.game) return;
   const g = gameById(S.sheet.gid);
   if (g) S.game.game = g;
@@ -79,6 +82,7 @@ function gameSheet() {
       <div>
         <div class="sub-h">Line movement <span class="seg" style="padding:2px" role="group" aria-label="Chart market"><button type="button" data-cm="s" aria-pressed="${mkt === 's'}" style="height:28px">Spread</button><button type="button" data-cm="t" aria-pressed="${mkt === 't'}" style="height:28px">Total</button></span></div>
         <div class="card chart" id="chart">${chartSVG(g, H, mkt)}</div>
+        ${H ? `<button type="button" class="tm-open" data-tm-open="${g.id}" data-tm-mkt="${mkt}">Replay the line, book by book</button>` : ''}
       </div>
       <div>${numbersPanel(g)}</div>
     </div>
@@ -121,7 +125,8 @@ function chartModel(g, H, mkt) {
 }
 // Time runs left to right, but hours before the first recorded point are squeezed so the tracked part is readable.
 function chartScale(M, W) {
-  const gapEnd = M.firstSeen && M.open?.t && M.firstSeen - M.open.t > 6 * 3600e3 ? M.firstSeen : null;
+  // No book history yet means firstSeen is Infinity: that's not a gap, and drawing it would throw.
+  const gapEnd = Number.isFinite(M.firstSeen) && M.open?.t && M.firstSeen - M.open.t > 6 * 3600e3 ? M.firstSeen : null;
   const L = 44, R = W - 12;
   if (!gapEnd) return { X: (t) => L + ((t - M.t0) / (M.t1 - M.t0)) * (R - L), inv: (x) => M.t0 + ((x - L) / (R - L)) * (M.t1 - M.t0), gapEnd: null, L, R };
   const gw = (R - L) * 0.14;
@@ -226,14 +231,14 @@ function bookTable(g) {
     const b = best[`${m}${side}`];
     const isBest = k !== 'cons' && k !== 'open' && b?.book === k && !isFinal(g);
     const main = m === 'ml' ? fmtOdds(p.odds) : m === 't' ? `${side === 'over' ? 'o' : 'u'}${fmtTot(p.line)}` : fmtPts(p.line);
-    const flash = S.flashed.has(`${g.id}|${k}|${m}`);
+    const flash = flashAttr(g.id, live ? 'live' : 'pre', k, m);
     const old = isOld(L);
-    const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash ? ' tick' : ''}${k === 'open' ? ' na' : ''}${old ? ' old' : ''}`;
+    const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash.cls}${k === 'open' ? ' na' : ''}${old ? ' old' : ''}`;
     const inner = `${esc(main)}${m !== 'ml' && p.odds != null ? `<small>${esc(fmtOdds(p.odds))}</small>` : ''}`;
-    if (k === 'open' || isFinal(g)) return `<span class="${cls}">${inner}</span>`;
+    if (k === 'open' || isFinal(g)) return `<span class="${cls}"${flash.style}>${inner}</span>`;
     const who = side === 'over' ? 'Over' : side === 'under' ? 'Under' : teamName(g[side]);
-    const label = [bookFull(k), `${who} ${main}`, m !== 'ml' ? fmtOdds(p.odds) : '', isBest ? 'best price' : '', L?.m ? 'typed in' : '', old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
-    return `<button type="button" class="${cls}" data-bet="${g.id}|${m}|${side}|${k}" aria-label="${esc(label)}">${inner}</button>`;
+    const label = [bookFull(k), `${who} ${main}`, m !== 'ml' ? fmtOdds(p.odds) : '', isBest ? 'best price' : '', L?.m ? 'typed in' : '', flash.label, old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
+    return `<button type="button" class="${cls}"${flash.style} data-bet="${g.id}|${m}|${side}|${k}" aria-label="${esc(label)}">${inner}</button>`;
   };
   const rows = keys.filter((k) => k === 'cons' || k === 'open' || src[k] || S.books.find((b) => b.key === k && !b.feed)).map((k) => {
     const b = S.books.find((x) => x.key === k);

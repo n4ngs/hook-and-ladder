@@ -582,13 +582,20 @@ const crypto = require('node:crypto');
 const hashCode = (c) => crypto.createHash('sha256').update(`hl:${c}`).digest('hex');
 const codeHash = ACCESS_CODE ? hashCode(ACCESS_CODE) : '';
 const sameHash = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
-// Five wrong codes from one address in 15 minutes locks that address out for the rest of the window.
+// Five wrong codes from one address in 15 minutes locks that address out for the rest of the window,
+// and 100 wrong codes from anywhere locks the login for everyone (a backstop against address rotation).
+const LOGIN_WINDOW = 15 * 60e3;
 const failures = new Map(); // ip -> [timestamps]
-const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+let allFailures = [];       // every wrong code, any address
+// The client can write anything into X-Forwarded-For; only the last entry, appended by Railway's proxy, is real.
+const clientIp = (req) => String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || '?';
 function lockedOut(ip) {
-  const recent = (failures.get(ip) || []).filter((t) => Date.now() - t < 15 * 60e3);
+  const now = Date.now();
+  allFailures = allFailures.filter((t) => now - t < LOGIN_WINDOW);
+  const recent = (failures.get(ip) || []).filter((t) => now - t < LOGIN_WINDOW);
   failures.set(ip, recent);
-  return recent.length >= 5;
+  if (failures.size > 5000) for (const [k, v] of failures) if (!v.length || now - v.at(-1) >= LOGIN_WINDOW) failures.delete(k);
+  return recent.length >= 5 || allFailures.length >= 100;
 }
 const cookieOf = (req) => Object.fromEntries(String(req.headers.cookie || '').split(';').map((c) => c.trim().split('=')).filter((x) => x[0]));
 function authed(req) {
@@ -614,7 +621,7 @@ const server = http.createServer(async (req, res) => {
     req.on('data', (c) => { body += c; if (body.length > 2000) req.destroy(); });
     req.on('end', () => {
       const code = new URLSearchParams(body).get('code') || '';
-      if (!sameHash(hashCode(code), codeHash)) { failures.get(ip).push(Date.now()); log('login: wrong code from', ip); return loginPage(res, true); }
+      if (!sameHash(hashCode(code), codeHash)) { failures.get(ip).push(Date.now()); allFailures.push(Date.now()); log('login: wrong code from', ip); return loginPage(res, true); }
       failures.delete(ip);
       const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
       res.writeHead(303, { location: '/', 'set-cookie': `hl_code=${codeHash}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}` });
