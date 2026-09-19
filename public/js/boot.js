@@ -95,8 +95,7 @@ document.addEventListener('click', (ev) => {
     if (S.parlay.some((x) => x.gid === l.gid && x.mkt === l.mkt)) { toastText('That game and market is already in the parlay.'); return; }
     S.parlay.push({ ...l });
     toastText(`Added. ${plural(S.parlay.length, 'leg')} in the parlay.`);
-    const back = S.sheet.returnTo;
-    if (back) openGame(back); else closeSheet();
+    returnFromSlip(S.sheet.returnTo);
     renderTray();
     return;
   }

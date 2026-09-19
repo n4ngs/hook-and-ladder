@@ -385,6 +385,27 @@ function fairFor(g, l) {
   return null;
 }
 
+// Where a bet slip was opened from (a game, Edges, Sweat Mode, the Time Machine) and how far down you were, so
+// Add to parlay and Save bet put you back there instead of closing everything onto the tab underneath.
+function sheetOrigin() {
+  const s = S.sheet;
+  if (!s) return null;
+  if (s.kind === 'slip') return s.returnTo || null;
+  const scroll = $('#dlgIn')?.scrollTop || 0;
+  if (s.kind === 'game') return { kind: 'game', gid: s.gid, scroll };
+  if (s.kind === 'edges' || s.kind === 'sweat') return { kind: s.kind, scroll };
+  if (s.kind === 'tm') return { kind: 'tm', gid: s.gid, mkt: s.mkt, scroll };
+  return null;
+}
+function returnFromSlip(r) {
+  if (r?.kind === 'game') openGame(r.gid);
+  else if (r?.kind === 'edges' && typeof edgeOpen === 'function') edgeOpen();
+  else if (r?.kind === 'sweat' && typeof sweatOpen === 'function') sweatOpen();
+  else if (r?.kind === 'tm' && typeof tmOpen === 'function') tmOpen(r.gid, r.mkt);
+  else { closeSheet(); return; }
+  if (r.scroll) requestAnimationFrame(() => requestAnimationFrame(() => { const box = $('#dlgIn'); if (box) box.scrollTop = r.scroll; }));
+}
+
 function openSlip(opts = {}) {
   let slip;
   if (opts.parlay) slip = { legs: S.parlay.map((l) => ({ ...l })), stake: S.unit, book: S.parlay.find((l) => l.book)?.book || '', parlay: true };
@@ -393,7 +414,7 @@ function openSlip(opts = {}) {
     const l = legFrom(g, opts.mkt, opts.side, opts.book);
     slip = { legs: [l], stake: S.unit, book: l.book, odds: l.odds };
   } else slip = { legs: [], stake: S.unit, book: '', pick: true };
-  S.sheet = { kind: 'slip', slip, returnTo: S.sheet?.kind === 'game' ? S.sheet.gid : null };
+  S.sheet = { kind: 'slip', slip, returnTo: sheetOrigin() };
   paintSlip();
   showSheet('slip', true);
 }
@@ -528,7 +549,7 @@ async function saveBet() {
     if (sl.parlay) S.parlay = [];
     const back = S.sheet.returnTo;
     toastText('Bet saved. It grades itself when the game ends.', { label: 'Undo', run: () => api(`/api/bets/${bet.id}`, { method: 'DELETE' }).catch((e) => toastText(e.message)) });
-    if (back) openGame(back); else closeSheet();
+    returnFromSlip(back);
     invalidate();
   } catch (e) {
     $('#slErr').textContent = e.message;
