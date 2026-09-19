@@ -125,7 +125,8 @@ function chartModel(g, H, mkt) {
 }
 // Time runs left to right, but hours before the first recorded point are squeezed so the tracked part is readable.
 function chartScale(M, W) {
-  const gapEnd = M.firstSeen && M.open?.t && M.firstSeen - M.open.t > 6 * 3600e3 ? M.firstSeen : null;
+  // No book history yet means firstSeen is Infinity: that's not a gap, and drawing it would throw.
+  const gapEnd = Number.isFinite(M.firstSeen) && M.open?.t && M.firstSeen - M.open.t > 6 * 3600e3 ? M.firstSeen : null;
   const L = 44, R = W - 12;
   if (!gapEnd) return { X: (t) => L + ((t - M.t0) / (M.t1 - M.t0)) * (R - L), inv: (x) => M.t0 + ((x - L) / (R - L)) * (M.t1 - M.t0), gapEnd: null, L, R };
   const gw = (R - L) * 0.14;
