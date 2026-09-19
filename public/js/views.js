@@ -565,7 +565,7 @@ function renderBets() {
   const top = `<div class="stats">
       <div><div class="v num ${st.net > 0 ? 'win' : ''}">${fmtMoney(st.net, true)}</div><div class="l">Net</div><div class="s">${esc(units(st.net))}${st.roi != null ? ` · ${(st.roi * 100).toFixed(1)}% ROI` : ''}</div></div>
       <div><div class="v num">${st.w}–${st.l}${st.p ? `–${st.p}` : ''}</div><div class="l">Record</div><div class="s">${st.w + st.l ? `${Math.round((st.w / (st.w + st.l)) * 100)}% winners` : 'No results yet'}</div></div>
-      <div><div class="v num ${st.avgClv > 0 ? 'win' : ''}">${st.avgClv == null ? '—' : `${st.avgClv > 0 ? '+' : ''}${st.avgClv.toFixed(1)}`}</div><div class="l">Avg. points vs close <i class="info" title="Closing line value: how your number compared with the final market number at kickoff">i</i></div><div class="s">${st.beat == null ? 'Tracked from kickoff' : `Beat the close ${fmtPct(st.beat)} of ${st.n}`}</div></div>
+      <div><div class="v num">${st.avgClv == null ? '—' : `${st.avgClv > 0 ? '+' : ''}${st.avgClv.toFixed(1)}`}</div><div class="l">Avg. points vs close <i class="info" title="Closing line value: how your number compared with the final market number at kickoff">i</i></div><div class="s">${st.beat == null ? 'Tracked from kickoff' : `Beat the close ${fmtPct(st.beat)} of ${st.n}`}</div></div>
       <div><div class="v num">${fmtMoney(st.openRisk)}</div><div class="l">At risk</div><div class="s">${plural(st.open, 'open bet')} · to win ${fmtMoney(st.openWin)}</div></div>
     </div>`;
   let list = '';
@@ -584,7 +584,7 @@ function renderBets() {
 
 function resultsView() {
   const done = S.bets.filter((b) => b.status !== 'open' && b.status !== 'void').sort((a, b) => (a.settled || 0) - (b.settled || 0));
-  if (!done.length) return '<div class="card empty"><b>No results yet</b>Your profit chart, closing line value and best books show up after your first graded bet.</div>';
+  if (!done.length) return clvCard() + '<div class="card empty"><b>No results yet</b>Your profit chart, closing line value and best books show up after your first graded bet.</div>';
   // cumulative P&L
   let run = 0;
   const pts = [[0, 0], ...done.map((b, i) => [i + 1, (run += b.net || 0)])];
@@ -600,7 +600,7 @@ function resultsView() {
   };
   const MK = { s: 'Spreads', t: 'Totals', ml: 'Moneylines', h1s: '1st-half spreads', h1t: '1st-half totals', tt: 'Team totals' };
   const table = (title, rows) => `<div class="card" style="padding:16px 0 4px"><div class="sub-h" style="padding:0 16px">${esc(title)}</div><table class="brk"><thead><tr><th>${esc(title.split(' ')[1] || '')}</th><th>Bets</th><th>Won</th><th>Net</th><th>ROI</th></tr></thead><tbody>${rows.map(([k, r]) => `<tr><td>${esc(k)}</td><td>${r.n}</td><td>${r.w}</td><td class="${r.net > 0 ? 'w' : ''}">${fmtMoney(r.net, true)}</td><td>${r.risk ? `${((r.net / r.risk) * 100).toFixed(0)}%` : '—'}</td></tr>`).join('')}</tbody></table></div>`;
-  return `<div class="gs-grid even">${chart}<div style="display:grid;gap:12px">${table('By market', by((b) => (b.legs.length > 1 ? 'Parlays' : MK[b.legs[0].mkt] || b.legs[0].mkt)))}${table('By book', by((b) => b.book || 'Unknown'))}</div></div>`;
+  return clvCard() + `<div class="gs-grid even">${chart}<div style="display:grid;gap:12px">${table('By market', by((b) => (b.legs.length > 1 ? 'Parlays' : MK[b.legs[0].mkt] || b.legs[0].mkt)))}${table('By book', by((b) => b.book || 'Unknown'))}</div></div>`;
 }
 
 // ------------------------------------------------------------ TOOLS
