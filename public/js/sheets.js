@@ -441,7 +441,17 @@ function slipCalcHTML() {
   const l0 = legs[0]?.l;
   const words = !single || !l0 ? '' : l0.mkt === 's' && Number.isFinite(l0.line) ? spreadWords(legs[0].g[l0.side], l0.line) : l0.mkt === 't' && Number.isFinite(l0.line) ? totalWords(l0.line) : l0.mkt === 'ml' && okOdds ? oddsWords(l0.odds) : '';
   return `<div class="calc"><div><div class="k">To win</div><div class="v num win">${win == null ? '—' : fmtMoney(Math.round(win * 100) / 100)}</div></div><div><div class="k">Implied</div><div class="v num">${okOdds ? fmtPct(imp(odds), 1) : '—'}</div></div><div><div class="k">${fair ? `vs ${esc(bookName(fair.book))} fair` : 'Fair price'}</div><div class="v num">${edge == null ? '—' : `${edge > 0 ? '+' : ''}${(edge * 100).toFixed(1)}%`}</div></div></div>
+    ${kellySlipHTML(fair, odds, okOdds, sl.stake)}
     ${words || fair ? `<p class="note">${esc(words)}${fair ? ` With the vig removed, the ${esc(bookName(fair.book))} price says this side wins ${fmtPct(fair.p, 1)} of the time.` : ''}</p>` : ''}`;
+}
+// Kelly stake at the user's settings, from the sharp fair chance. One tap puts it in the stake box.
+function kellySlipHTML(fair, odds, okOdds, stake) {
+  if (!fair || !okOdds) return '';
+  const k = kellyStake(fair.p, odds);
+  if (!k) return '';
+  if (!k.dollars) return `<p class="k-slip none">No edge at ${esc(fmtOdds(odds))} against the fair price, so Kelly says <b>no bet</b>. <button type="button" class="k-link" data-kelly-settings>Sizing settings</button></p>`;
+  const same = Math.abs((stake || 0) - k.dollars) < 0.5;
+  return `<p class="k-slip"><span><b>${esc(kellyName())}</b> says <b class="num">${esc(fmtMoney(k.dollars))}</b> · ${(k.pct * 100).toFixed(1)}% of your bankroll${k.capped ? ', held to your cap' : ''}</span>${same ? '<span class="k-on">In use</span>' : `<button type="button" class="k-use" data-kelly-use="${k.dollars}">Use ${esc(fmtMoney(k.dollars))}</button>`}</p>`;
 }
 function updateSlipCalc() {
   const el = $('#slCalc');

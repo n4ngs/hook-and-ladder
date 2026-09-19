@@ -1,0 +1,23 @@
+/* Hook & Ladder — Kelly bet sizing (kelly.js). Same tool-card system as the other calculators. */
+.kelly .k-fld{margin-top:var(--s3)}
+.kelly .k-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:13px;font-weight:500;color:var(--ink-2)}
+.kelly .k-h b{font-size:17px;font-weight:650;color:var(--ink)}
+.kelly .k-presets{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.kelly .k-presets .chip{min-width:56px;justify-content:center}
+.kelly .k-range{display:block;width:100%;height:44px;margin:4px 0 0;accent-color:var(--ink);cursor:pointer;background:none}
+.kelly .k-ex{margin-top:var(--s3);padding:12px 14px;border-radius:var(--r-md);background:var(--fill);font-size:14px;line-height:1.45;color:var(--ink-2)}
+.kelly .k-ex b{color:var(--ink);font-weight:600}
+.kelly .k-sub{margin:var(--s3) 0 0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+
+/* bet slip: the suggestion under the payout math */
+.k-slip{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 0;padding:10px 12px 10px 14px;border-radius:var(--r-md);background:var(--surface);font-size:14px;line-height:1.35;color:var(--ink-2)}
+.k-slip b{color:var(--ink);font-weight:600}
+.k-slip.none{display:block}
+.k-use{flex:none;min-height:44px;padding:0 14px;border-radius:999px;background:var(--ink);color:var(--surface);font-size:13px;font-weight:600;white-space:nowrap}
+.k-on{flex:none;font-size:12px;font-weight:600;color:var(--ink-2);padding:0 6px}
+.k-link{min-height:44px;font-size:13px;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+
+/* Edges sheet: how stakes are sized, with a way to change it */
+.edge-sizing{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:12px 0 0;font-size:13px;color:var(--ink-2)}
+.edge-sizing b{color:var(--ink);font-weight:600}
+.edge-sizing-btn{min-height:44px;padding:0 4px;font-size:13px;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:2px}

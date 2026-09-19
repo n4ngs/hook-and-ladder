@@ -12,10 +12,10 @@
    Without S.keys the curve is a plain normal and the UI says "approx.".
 
    Guards: pre-game only, visible books only, prices older than 15 min ignored (isOld), line gaps over 3 points
-   skipped, moneylines longer than +500 skipped, edges over 12% treated as a stale or bad feed and dropped. Stake: quarter-Kelly with 1 unit = 1% of
-   bankroll (units of S.unit dollars), capped at 2 units. A suggestion, not advice. */
+   skipped, moneylines longer than +500 skipped, edges over 12% treated as a stale or bad feed and dropped. Stakes come from the user's Kelly settings
+   (kelly.js: fraction, bankroll, cap, rounding), and the smallest edge shown is theirs too. A suggestion, not advice. */
 
-const EDGE_MIN = 0.01;          // show from +1%
+const EDGE_MIN = 0.005;         // scored from +0.5%; the user's Kelly settings choose what's shown
 const EDGE_ALERT = 0.02;        // alert from +2%
 const EDGE_MAX = 0.12;          // above this it's almost always a stale or broken price
 const EDGE_MAX_GAP = 3;         // points between a book's line and the sharp line we'll model across
@@ -148,9 +148,7 @@ function edgeScoreGame(g) {
         const ev = w * d + push - 1;
         if (ev < EDGE_MIN || ev > EDGE_MAX) continue;
         const pFair = w / (1 - push || 1);
-        const b = d - 1;
-        const units = Math.min(2, Math.round(((0.25 * ev) / b) * 100 * 10) / 10);
-        out.push({ g, gid: g.id, mkt, side, book: k, line: px.line, odds: px.odds, ev, p: pFair, push, fairAm: probToAm(pFair), src: F.book, srcLine: sLine, est, units });
+        out.push({ g, gid: g.id, mkt, side, book: k, line: px.line, odds: px.odds, ev, p: pFair, push, fairAm: probToAm(pFair), src: F.book, srcLine: sLine, est });
       }
     }
   }
@@ -167,7 +165,8 @@ function edgesFor(g) {
   if (m && m.v === v) return m.list;
   const list = edgeScoreGame(g);
   edgeMemo.set(g, { v, list });
-  return list;
+  const min = kellyMinEdge();
+  return list.filter((e) => e.ev >= min);
 }
 function edgeAll() {
   return allGames().filter(isPre).flatMap(edgesFor).sort((a, b) => b.ev - a.ev);
@@ -206,7 +205,8 @@ function edgeLabel(e) {
 function edgeRow(e, full) {
   const g = e.g;
   const t = e.mkt === 't' ? g.home : g[e.side];
-  const stake = `${trim(Math.max(0.1, e.units))}u${S.unit ? ` · ${fmtMoney(Math.round(Math.max(0.1, e.units) * S.unit))}` : ''}`;
+  const k = kellyStake(e.p * (1 - e.push), e.odds, e.push);
+  const stake = kellyShort(k);
   return `<button type="button" class="edge-row" data-edge-pick="${esc(`${e.gid}|${e.mkt}|${e.side}|${e.book}`)}" aria-label="${esc(edgeLabel(e))}">
     ${logo(t, 'logo edge-logo')}
     <span class="edge-mid"><span class="edge-t"><b>${esc(edgePick(e))}</b> <span class="num">${esc(fmtOdds(e.odds))}</span> <span class="edge-bk">${esc(bookName(e.book))}</span></span>
@@ -252,9 +252,10 @@ function edgeSheetHTML() {
   const chips = EDGE_CHIPS.map(([k, l]) => `<button type="button" class="chip" data-edge-mkt="${k}" aria-pressed="${edgeMkt === k}">${esc(l)}<small class="num">${all.filter((e) => edgeInChip(e, k)).length}</small></button>`).join('');
   return `<h2 id="dlgTitle">Edges</h2>
     <p class="lede">${esc(EDGE_EXPLAIN)} Pre-game prices checked in the last 15 minutes, best first.</p>
+    <p class="edge-sizing">Stakes: <b>${esc(kellyName())}</b> · ${esc(fmtMoney(kellyCfg().bankroll))} bankroll · up to ${kellyCfg().capPct}% a bet · edges from +${kellyCfg().minEdge}% <button type="button" class="edge-sizing-btn" data-kelly-settings>Change</button></p>
     <div class="chips edge-chips" role="group" aria-label="Market">${chips}</div>
     ${list.length ? `<div class="card edge-list">${list.map((e) => edgeRow(e, true)).join('')}</div>`
-      : `<p class="edge-none">${all.length ? 'No edges of 1% or more in this market right now.' : 'No edges of 1% or more right now. They show up here the moment a book lags the sharp price.'}</p>`}
+      : `<p class="edge-none">${all.length ? `No edges of +${kellyCfg().minEdge}% or more in this market right now.` : `No edges of +${kellyCfg().minEdge}% or more right now. They show up here the moment a book lags the sharp price.`}</p>`}
     <p class="note">Fair price: Pinnacle with the vig removed, else Circa, else the market consensus. When a book's number differs from the sharp number, the fair chance is ${edgeModeled() ? 'est. from how often each margin happened last season, so the hook across 3, 7, 10 or 14 counts extra' : 'approx. from a normal curve of final margins'}. <b>Sugg.</b> stake is quarter-Kelly with 1 unit (${esc(fmtMoney(S.unit))}) = 1% of bankroll, capped at 2 units. A suggestion, not advice.</p>`;
 }
 function edgePaintSheet() {
@@ -316,12 +317,12 @@ const edgeAlerted = new Map(); // key -> time alerted
 document.addEventListener('hl:game', (ev) => {
   const { prev, g } = ev.detail || {};
   if (S.alerts !== 'all' || !prev || !g || !isPre(g)) return;
-  const before = new Set(edgeScoreGame(prev).filter((e) => e.ev >= EDGE_ALERT).map((e) => `${e.gid}|${e.mkt}|${e.side}|${e.book}`));
+  const before = new Set(edgeScoreGame(prev).filter((e) => e.ev >= Math.max(EDGE_ALERT, kellyMinEdge())).map((e) => `${e.gid}|${e.mkt}|${e.side}|${e.book}`));
   const now = Date.now();
   for (const [k, t] of edgeAlerted) if (now - t > 30 * 60e3) edgeAlerted.delete(k);
   const fresh = edgesFor(g).filter((e) => {
     const k = `${e.gid}|${e.mkt}|${e.side}|${e.book}`;
-    return e.ev >= EDGE_ALERT && !before.has(k) && !edgeAlerted.has(k);
+    return e.ev >= Math.max(EDGE_ALERT, kellyMinEdge()) && !before.has(k) && !edgeAlerted.has(k);
   });
   if (!fresh.length) return;
   for (const e of fresh) edgeAlerted.set(`${e.gid}|${e.mkt}|${e.side}|${e.book}`, now);
