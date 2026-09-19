@@ -112,7 +112,8 @@ function renderLive() {
   ].map(([l, v, s]) => `<div><div class="v num">${v}</div><div class="l">${esc(l)}${s ? ` · ${esc(s)}` : ''}</div></div>`).join('');
 
   renderMoveCards();
-  if (typeof edgeLive === 'function') edgeLive(); // Edge Finder: top edges on the Live tab (edge.js)
+  if (typeof edgeLive === 'function' && !(typeof limBreak === 'function' && limBreak())) edgeLive(); // Edge Finder: top edges on the Live tab (edge.js)
+  else $('#edgeTop')?.remove(); // hidden while you're taking a break (limits.js)
   renderHero(live, pre);
   renderHeroSide();
 
@@ -357,7 +358,7 @@ function passes(g, f) {
   if (f === 'bets') return S.bets.some((b) => b.legs.some((l) => l.gid === g.id));
   if (f === 'moving') return (g.open?.s != null && g.mkt?.s != null && Math.abs(g.mkt.s - g.open.s) >= 1.5) || (g.open?.t != null && g.mkt?.t != null && Math.abs(g.mkt.t - g.open.t) >= 2) || (g.moves || []).some((m) => serverNow() - m.t < 6 * 3600e3);
   if (f === 'live') return isLive(g);
-  if (f === 'edges') return typeof edgeGame === 'function' && edgeGame(g);
+  if (f === 'edges') return typeof edgeGame === 'function' && !(typeof limBreak === 'function' && limBreak()) && edgeGame(g);
   return g.home.conf === f || g.away.conf === f;
 }
 function matchesQuery(g) {
@@ -428,7 +429,7 @@ function pxCell(g, mkt, side, book, best, opts = {}) {
   const label = [bookFull(book), `${who} ${m === 'ml' ? fmtOdds(p.odds) : mkt === 't' ? fmtTot(p.line) : fmtPts(p.line)}`, m === 'ml' ? '' : fmtOdds(p.odds), isBest ? 'best price' : '', L?.m ? 'typed in' : '', flash.label, old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
   const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash.cls}${old ? ' old' : ''}`;
   if (isFinal(g)) return `<span class="${cls}"${flash.style} aria-label="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
-  return `<button type="button" class="${cls}"${flash.style} data-bet="${g.id}|${m}|${side}|${book}" aria-label="${esc(label)}" title="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}${typeof edgeBadge === 'function' ? edgeBadge(g, m, side, book) : ''}</button>`;
+  return `<button type="button" class="${cls}"${flash.style} data-bet="${g.id}|${m}|${side}|${book}" aria-label="${esc(label)}" title="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}${typeof edgeBadge === 'function' && !(typeof limBreak === 'function' && limBreak()) ? edgeBadge(g, m, side, book) : ''}</button>`;
 }
 function bestFor(g, mkt, side) {
   const books = mkt === 'h1' ? g.h1 : isLive(g) ? g.live : g.books;
@@ -568,7 +569,7 @@ function renderBets() {
       <div><div class="v num">${st.w}–${st.l}${st.p ? `–${st.p}` : ''}</div><div class="l">Record</div><div class="s">${st.w + st.l ? `${Math.round((st.w / (st.w + st.l)) * 100)}% winners` : 'No results yet'}</div></div>
       <div><div class="v num">${st.avgClv == null ? '—' : `${st.avgClv > 0 ? '+' : ''}${st.avgClv.toFixed(1)}`}</div><div class="l">Avg. points vs close <i class="info" title="Closing line value: how your number compared with the final market number at kickoff">i</i></div><div class="s">${st.beat == null ? 'Tracked from kickoff' : `Beat the close ${fmtPct(st.beat)} of ${st.n}`}</div></div>
       <div><div class="v num">${fmtMoney(st.openRisk)}</div><div class="l">At risk</div><div class="s">${plural(st.open, 'open bet')} · to win ${fmtMoney(st.openWin)}</div></div>
-    </div>`;
+    </div>${typeof limBetsLine === 'function' ? limBetsLine() : ''}`;
   let list = '';
   if (S.bseg === 'open' || S.bseg === 'settled') {
     const bets = S.bets.filter((b) => (S.bseg === 'open' ? b.status === 'open' : b.status !== 'open'));
@@ -630,6 +631,7 @@ function renderTools() {
       <div class="out" id="hOut"></div></div>
     ${acctCard()}
     ${kellyCard()}
+    ${typeof limCard === 'function' ? limCard() : ''}
     <div class="card tool" id="keysTool"><h3>Key numbers</h3><p id="keysLede">How often last season's FBS games ended by exactly each margin.</p><div id="keysBody"></div></div>
     <div class="card tool"><h3>Books on the board</h3><p>Tap to hide a book everywhere on this device. Books without a live feed take numbers you type in from the counter.</p><div class="bk-tog" id="bookTog"></div><div class="srcs" id="srcList" style="margin-top:16px"></div></div>
     <div class="card tool"><h3>Settings</h3><p>Unit size is used to show results in units.</p>
@@ -642,6 +644,7 @@ function renderTools() {
 function updateTools() {
   kellyPaint();
   acctPaint();
+  if (typeof limPaint === 'function') limPaint();
   const n = (id) => Number(String($(id)?.value || '').replace(/[^\d.+-]/g, ''));
   const odds = n('#tOdds'), stake = n('#tStake');
   $('#tOddsOut').innerHTML = odds && Math.abs(odds) >= 100 ? `<div><div class="k">Decimal</div><div class="v num">${dec(odds).toFixed(3)}</div></div><div><div class="k">Implied</div><div class="v num">${fmtPct(imp(odds), 1)}</div></div><div><div class="k">Wins</div><div class="v num win">${fmtMoney(Math.round(toWin(stake, odds) * 100) / 100)}</div></div>` : '<div><div class="k">Enter odds like −110 or +150</div></div>';

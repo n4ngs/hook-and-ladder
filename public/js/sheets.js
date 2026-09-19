@@ -611,6 +611,7 @@ async function saveBet() {
   const problems = slipProblems();
   showSlipProblems(problems);
   if (problems.length) return;
+  if (typeof limGate === 'function' && !limGate()) return; // past a play limit: say so once, then "Save anyway" (limits.js)
   const sl = S.sheet.slip;
   const legs = sl.legs.map((l) => { const g = gameById(l.gid); return { ...l, label: legLabel(g, l), matchup: `${g.away.abbr} @ ${g.home.abbr}`, start: g.start }; });
   try {
