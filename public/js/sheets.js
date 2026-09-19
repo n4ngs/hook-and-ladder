@@ -45,6 +45,9 @@ async function fetchGame(gid) {
 }
 let lastPaint = 0;
 function refreshSheet() {
+  // Feature sheets repaint themselves on live data (sweat.js, tmachine.js, edge.js).
+  const hook = { sweat: 'sweatRefresh', tm: 'tmRefresh', edges: 'edgeRefresh' }[S.sheet?.kind];
+  if (hook) { if (typeof window[hook] === 'function') window[hook](); return; }
   if (S.sheet?.kind !== 'game' || !S.game) return;
   const g = gameById(S.sheet.gid);
   if (g) S.game.game = g;
@@ -79,6 +82,7 @@ function gameSheet() {
       <div>
         <div class="sub-h">Line movement <span class="seg" style="padding:2px" role="group" aria-label="Chart market"><button type="button" data-cm="s" aria-pressed="${mkt === 's'}" style="height:28px">Spread</button><button type="button" data-cm="t" aria-pressed="${mkt === 't'}" style="height:28px">Total</button></span></div>
         <div class="card chart" id="chart">${chartSVG(g, H, mkt)}</div>
+        ${H ? `<button type="button" class="tm-open" data-tm-open="${g.id}" data-tm-mkt="${mkt}">${ICON.play || ''}Replay the line, book by book</button>` : ''}
       </div>
       <div>${numbersPanel(g)}</div>
     </div>

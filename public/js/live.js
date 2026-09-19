@@ -79,6 +79,7 @@ function connect() {
     w.games.set(g.id, g);
     if (prev) watchGame(prev, g);
     if (S.game?.game?.id === g.id) S.game.game = g;
+    document.dispatchEvent(new CustomEvent('hl:game', { detail: { prev, g } }));
     invalidate();
   });
   on('move', (m) => {
