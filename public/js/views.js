@@ -374,6 +374,7 @@ function renderBoard(loading = false) {
   const prev = S.cal[idx - 1], next = S.cal[idx + 1];
   $('#weekNav').innerHTML = `<button class="ibtn" type="button" data-week="${prev?.id || ''}" ${prev ? '' : 'disabled'} aria-label="Previous week">${ICON.back}</button><span class="lab">${esc(meta.detail || meta.label || '')}</span><button class="ibtn" type="button" data-week="${next?.id || ''}" ${next ? '' : 'disabled'} aria-label="Next week">${ICON.chev}</button>`;
   $$('#mktSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mkt === S.mkt)));
+  if (typeof wxBoard === 'function') wxBoard(loading ? null : W); // Weather watch card (weather.js)
   if (loading || !W) { $('#boardSub').textContent = 'Loading…'; $('#boardBody').innerHTML = '<div class="card empty"><b>Loading the week</b>Pulling every game and line.</div>'; return; }
 
   const games = [...W.games.values()].filter((g) => g.state !== 'off' || true);
