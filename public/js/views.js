@@ -623,6 +623,7 @@ function renderTools() {
     <div class="card tool"><h3>Hedge</h3><p>Lock in profit (or cut a loss) by betting the other side. Works for a live sweat or a parlay's last leg.</p>
       <div class="fgrid"><label class="fld">Original payout if it wins<input class="inp" id="hPay" inputmode="decimal" value="500"></label><label class="fld">Original stake<input class="inp" id="hStake" inputmode="decimal" value="100"></label><label class="fld full">Hedge odds on the other side<input class="inp" id="hOdds" value="-150"></label></div>
       <div class="out" id="hOut"></div></div>
+    ${acctCard()}
     ${kellyCard()}
     <div class="card tool" id="keysTool"><h3>Key numbers</h3><p id="keysLede">How often last season's FBS games ended by exactly each margin.</p><div id="keysBody"></div></div>
     <div class="card tool"><h3>Books on the board</h3><p>Tap to hide a book everywhere on this device. Books without a live feed take numbers you type in from the counter.</p><div class="bk-tog" id="bookTog"></div><div class="srcs" id="srcList" style="margin-top:16px"></div></div>
@@ -635,6 +636,7 @@ function renderTools() {
 
 function updateTools() {
   kellyPaint();
+  acctPaint();
   const n = (id) => Number(String($(id)?.value || '').replace(/[^\d.+-]/g, ''));
   const odds = n('#tOdds'), stake = n('#tStake');
   $('#tOddsOut').innerHTML = odds && Math.abs(odds) >= 100 ? `<div><div class="k">Decimal</div><div class="v num">${dec(odds).toFixed(3)}</div></div><div><div class="k">Implied</div><div class="v num">${fmtPct(imp(odds), 1)}</div></div><div><div class="k">Wins</div><div class="v num win">${fmtMoney(Math.round(toWin(stake, odds) * 100) / 100)}</div></div>` : '<div><div class="k">Enter odds like −110 or +150</div></div>';

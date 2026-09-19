@@ -183,7 +183,7 @@ function feeds() {
   return seen;
 }
 
-function snapshot() {
+function snapshot(uid) {
   const W = weeks.get(defId);
   return {
     now: Date.now(),
@@ -192,7 +192,7 @@ function snapshot() {
     def: defId, cur: curId, tracked: tracked().map((w) => w.id),
     week: W ? weekSnapshot(W) : null,
     books: BOOKS.map(({ key, name, short, vegas, sharp }) => ({ key, name, short, vegas: !!vegas, sharp: !!sharp, feed: feeds().has(key) })),
-    bets: Bets.list(),
+    bets: Bets.list(uid),
     liveMs: LIVE_MS,
   };
 }
@@ -201,6 +201,13 @@ function snapshot() {
 function emit(type, data) {
   const msg = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of clients) res.write(msg);
+}
+// Bets are private: each connection gets only its own owner's list.
+function emitBets() {
+  for (const res of clients) res.write(`event: bets\ndata: ${JSON.stringify(Bets.list(res.uid))}\n\n`);
+}
+function emitSnapshot() {
+  for (const res of clients) res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot(res.uid))}\n\n`);
 }
 // Push every game in the week whose public view changed since the last push.
 function flush(W) {
@@ -232,7 +239,7 @@ async function pollEspn(W) {
   W.at.espn = Date.now();
   // Games that started before this server did still need a closing line.
   for (const g of W.games.values()) if (g.state !== 'pre' && !W.lines.full(g.id)?.close) onKickoff(W, g);
-  if (Bets.refresh(gameById, closeById)) emit('bets', Bets.list());
+  if (Bets.refresh(gameById, closeById)) emitBets();
 }
 
 function onKickoff(W, g) {
@@ -397,7 +404,7 @@ async function pollStrays() {
       if (g) strays.set(gid, g);
     } catch (e) { log('stray', gid, e.message); }
   }
-  if (Bets.refresh(gameById, closeById)) emit('bets', Bets.list());
+  if (Bets.refresh(gameById, closeById)) emitBets();
 }
 
 // ---------------------------------------------------------------- calendar and the default week
@@ -432,7 +439,7 @@ function pickDefault() {
   if (id !== defId) {
     const was = defId;
     defId = id;
-    if (was) { log('default week', defId); emit('snapshot', snapshot()); }
+    if (was) { log('default week', defId); emitSnapshot(); }
   }
 }
 
@@ -602,6 +609,33 @@ function authed(req) {
   if (!ACCESS_CODE) return true;
   return sameHash(cookieOf(req).hl_code || '', codeHash);
 }
+// ---------------------------------------------------------------- whose bets
+// Every device gets a random id in a secure cookie, set silently on its first request after the access code, so
+// nobody signs up and nobody is signed out. Bets belong to that id. A second device joins the same log with a
+// short-lived link code (Tools). OWNER_CODE lets the app's owner claim bets saved before ids existed.
+const OWNER_CODE = process.env.OWNER_CODE || '';
+const UID_RE = /^[a-f0-9]{32}$/;
+const uidOf = (req) => { const v = cookieOf(req).hl_uid || ''; return UID_RE.test(v) ? v : ''; };
+function setUid(req, res, uid) {
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  res.setHeader('set-cookie', `hl_uid=${uid}; Path=/; Max-Age=63072000; HttpOnly; SameSite=Lax${secure}`);
+}
+function ensureUid(req, res) {
+  let uid = uidOf(req);
+  if (!uid) { uid = crypto.randomBytes(16).toString('hex'); setUid(req, res, uid); }
+  return uid;
+}
+// Link codes: 8 characters without look-alikes, good for 10 minutes and one use.
+const LINK_ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const links = new Map(); // code -> { uid, exp }
+function newLink(uid) {
+  for (const [k, v] of links) if (v.exp < Date.now()) links.delete(k);
+  let code = '';
+  const bytes = crypto.randomBytes(8);
+  for (const b of bytes) code += LINK_ABC[b % LINK_ABC.length];
+  links.set(code, { uid, exp: Date.now() + 10 * 60e3 });
+  return { code, exp: Date.now() + 10 * 60e3 };
+}
 const OPEN_PATHS = new Set(['/manifest.webmanifest', '/icons/icon.svg', '/icons/apple-touch-icon.png', '/icons/icon-192.png', '/icons/icon-512.png']);
 function loginPage(res, wrong) {
   res.writeHead(wrong ? 401 : 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
@@ -634,11 +668,13 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/')) return sendJSON(res, 401, { error: 'Access code required' });
     return loginPage(res, false);
   }
+  const uid = ensureUid(req, res);
   try {
     if (p === '/api/stream') {
       res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
       res.write('retry: 2000\n\n');
-      res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot())}\n\n`);
+      res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot(uid))}\n\n`);
+      res.uid = uid;
       clients.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15000);
       req.on('close', () => { clearInterval(ping); clients.delete(res); });
@@ -661,29 +697,52 @@ const server = http.createServer(async (req, res) => {
       }
       return sendJSON(res, 404, { error: 'That game is not loaded. Open its week first.' });
     }
-    if (p === '/api/bets' && M === 'GET') return sendJSON(res, 200, Bets.list());
+    // ---- your log: status, link another device, claim pre-accounts bets
+    if (p === '/api/me' && M === 'GET') return sendJSON(res, 200, { bets: Bets.list(uid).length, claimable: OWNER_CODE ? Bets.unowned() : 0 });
+    if (p === '/api/me/link' && M === 'POST') return sendJSON(res, 200, newLink(uid));
+    if ((p === '/api/me/join' || p === '/api/me/claim') && M === 'POST') {
+      const ip = clientIp(req);
+      if (lockedOut(ip)) return sendJSON(res, 429, { error: 'Too many tries. Wait 15 minutes.' });
+      const code = String((await readBody(req)).code || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+      const fail = (msg) => { failures.get(ip).push(Date.now()); allFailures.push(Date.now()); return sendJSON(res, 400, { error: msg }); };
+      if (p === '/api/me/join') {
+        const L = links.get(code);
+        if (!L || L.exp < Date.now()) return fail('That code didn’t work. Codes last 10 minutes; make a new one on your other device.');
+        links.delete(code);
+        const moved = L.uid === uid ? 0 : Bets.merge(uid, L.uid); // bring this device's bets along
+        setUid(req, res, L.uid);
+        for (const c of clients) if (c.uid === uid) c.uid = L.uid;
+        emitBets();
+        return sendJSON(res, 200, { ok: true, moved, bets: Bets.list(L.uid).length });
+      }
+      if (!OWNER_CODE || !sameHash(hashCode(code.toLowerCase()), hashCode(OWNER_CODE.toLowerCase()))) return fail('That isn’t the owner code.');
+      const n = Bets.claimUnowned(uid);
+      emitBets();
+      return sendJSON(res, 200, { ok: true, claimed: n });
+    }
+    if (p === '/api/bets' && M === 'GET') return sendJSON(res, 200, Bets.list(uid));
     if (p === '/api/bets' && M === 'POST') {
-      const b = Bets.create(await readBody(req));
+      const b = Bets.create(await readBody(req), uid);
       Bets.refresh(gameById, closeById);
-      emit('bets', Bets.list());
+      emitBets();
       return sendJSON(res, 200, b);
     }
     const bm = /^\/api\/bets\/([\w-]+)$/.exec(p);
     if (bm && M === 'PATCH') {
-      const b = Bets.update(bm[1], await readBody(req));
+      const b = Bets.update(bm[1], await readBody(req), uid);
       if (!b) return sendJSON(res, 404, { error: 'No such bet' });
       Bets.refresh(gameById, closeById);
-      emit('bets', Bets.list());
+      emitBets();
       return sendJSON(res, 200, b);
     }
     if (bm && M === 'DELETE') {
-      const ok = Bets.remove(bm[1]);
-      emit('bets', Bets.list());
+      const ok = Bets.remove(bm[1], uid);
+      emitBets();
       return sendJSON(res, ok ? 200 : 404, { ok });
     }
     if (p === '/api/bets.csv') {
       res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="hook-and-ladder-bets.csv"' });
-      return res.end(Bets.csv());
+      return res.end(Bets.csv(uid));
     }
     if (p === '/api/manual' && M === 'POST') {
       try { return sendJSON(res, 200, setManual(await readBody(req))); } catch (e) { return sendJSON(res, 400, { error: e.message }); }
@@ -742,7 +801,7 @@ process.on('SIGTERM', shutdown);
     await Promise.allSettled([pollAn(W), pollAn1(W)]);
   }
   pickDefault();
-  emit('snapshot', snapshot());
+  emitSnapshot();
   startLoops(); // VSiN and Pinnacle load in the first loop pass
   margins(cal.season - 1); // warm the key-number table in the background
   const W = weeks.get(defId);
