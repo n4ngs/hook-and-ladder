@@ -39,6 +39,7 @@ const ICON = {
   plus: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>',
   wind: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 6h8.5a2 2 0 1 0-2-2M2 10h10.5a2 2 0 1 1-2 2"/></svg>',
   share: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10V2.5M5 5.2L8 2.3l3 2.9M4 8H3.5v5.5h9V8H12"/></svg>',
+  play: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4c0 .6.7 1 1.2.7l8.3-5.2c.5-.3.5-1.1 0-1.4L5.7 2.1c-.5-.3-1.2.1-1.2.7z"/></svg>',
   up: '<svg viewBox="0 0 10 10" fill="currentColor" aria-hidden="true"><path d="M5 2l3.5 5h-7z"/></svg>',
   down: '<svg viewBox="0 0 10 10" fill="currentColor" aria-hidden="true"><path d="M5 8L1.5 3h7z"/></svg>',
 };

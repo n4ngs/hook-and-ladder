@@ -363,6 +363,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
   .btable.m-s .c-t,.btable.m-s .c-ml,.btable.m-t .c-s,.btable.m-t .c-ml,.btable.m-ml .c-s,.btable.m-ml .c-t{display:none}
 }
 .addnum{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;width:100%;border-top:1px solid var(--line);font-size:14px;font-weight:600;color:var(--ink)}
+.addnum svg{width:16px;height:16px;flex:none}
 
 .splits{padding:var(--s2)}
 .sp + .sp{margin-top:var(--s2);padding-top:var(--s2);border-top:1px solid var(--line)}
@@ -668,4 +669,12 @@ textarea.inp{height:72px;padding:12px 14px;font-size:15px;font-weight:500;resize
 }
 @media (min-width:1024px){
   .hero-side-first:not(:empty) + .hero{margin-top:var(--s4)}
+}
+
+/* game sheet header on phones: two-word school names wrap instead of truncating */
+@media (max-width:1023px){
+  .gs-t{gap:8px}
+  .gs-t img{width:32px;height:32px}
+  .gs-t .n{white-space:normal;overflow:visible;font-size:15px;line-height:1.15;overflow-wrap:anywhere}
+  .gs-t .s{font-size:34px}
 }

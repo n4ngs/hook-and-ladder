@@ -50,6 +50,7 @@ const edgeModeled = () => !!S.keys?.n;
 
 // Probability of each integer outcome: margins (no ties in college football) or totals.
 function edgePmf(kind, mu) {
+  if (!Number.isFinite(mu)) return []; // a broken line can't be priced; callers then find no edge
   const L = edgeLumps()[kind === 's' ? 'm' : 't'];
   const sd = kind === 's' ? SIGMA : EDGE_TOTAL_SD;
   const lo = kind === 's' ? Math.floor(mu - 5 * sd) : Math.max(0, Math.floor(mu - 5 * sd));
@@ -61,7 +62,7 @@ function edgePmf(kind, mu) {
     const w = Math.exp(-0.5 * ((v - mu) / sd) ** 2) * (L.get(Math.abs(v)) ?? 1);
     pts.push([v, w]); z += w;
   }
-  return pts.map(([v, w]) => [v, w / z]);
+  return z > 0 ? pts.map(([v, w]) => [v, w / z]) : [];
 }
 // Win / push chances for "outcome + line > 0" (spread, home side) or "total > line" (over).
 function edgeWP(pmf, kind, line) {
