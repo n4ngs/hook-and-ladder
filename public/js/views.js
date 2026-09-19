@@ -568,7 +568,8 @@ function renderBets() {
   if (S.bseg === 'open' || S.bseg === 'settled') {
     const bets = S.bets.filter((b) => (S.bseg === 'open' ? b.status === 'open' : b.status !== 'open'));
     if (S.bseg === 'open') bets.sort((a, b) => Number(b.legs.some((l) => isLive(gameById(l.gid)))) - Number(a.legs.some((l) => isLive(gameById(l.gid)))));
-    list = bets.length ? `<div class="bets">${bets.map(betCard).join('')}</div>` : `<div class="card empty"><b>${S.bseg === 'open' ? 'No open bets' : 'Nothing settled yet'}</b>${S.bseg === 'open' ? 'Tap any price on the board to log a bet, or log one by hand.' : 'Bets grade themselves the moment a game goes final.'}</div>`;
+    // Open bets lead with the ranked 'Most likely to hit' board (hitlist.js).
+    list = (S.bseg === 'open' ? hitList(bets) : '') + (bets.length ? `<div class="bets">${bets.map(betCard).join('')}</div>` : `<div class="card empty"><b>${S.bseg === 'open' ? 'No open bets' : 'Nothing settled yet'}</b>${S.bseg === 'open' ? 'Tap any price on the board to log a bet, or log one by hand.' : 'Bets grade themselves the moment a game goes final.'}</div>`);
   } else {
     list = resultsView();
   }
