@@ -65,7 +65,7 @@ const S = {
   unit: store.get('unit', 100),
   parlay: [],             // legs waiting in the tray
   ticks: new Map(),       // "gid|book|mkt" -> last value, for flashing changed prices
-  flashed: new Set(),
+  flashed: new Map(),     // flash key -> time the price changed (live.js flashAttr)
   sheet: null,            // { kind, gid, ... }
   game: null,             // detail payload for the open game sheet
 };

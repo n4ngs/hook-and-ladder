@@ -230,14 +230,14 @@ function bookTable(g) {
     const b = best[`${m}${side}`];
     const isBest = k !== 'cons' && k !== 'open' && b?.book === k && !isFinal(g);
     const main = m === 'ml' ? fmtOdds(p.odds) : m === 't' ? `${side === 'over' ? 'o' : 'u'}${fmtTot(p.line)}` : fmtPts(p.line);
-    const flash = S.flashed.has(`${g.id}|${k}|${m}`);
+    const flash = flashAttr(g.id, live ? 'live' : 'pre', k, m);
     const old = isOld(L);
-    const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash ? ' tick' : ''}${k === 'open' ? ' na' : ''}${old ? ' old' : ''}`;
+    const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash.cls}${k === 'open' ? ' na' : ''}${old ? ' old' : ''}`;
     const inner = `${esc(main)}${m !== 'ml' && p.odds != null ? `<small>${esc(fmtOdds(p.odds))}</small>` : ''}`;
-    if (k === 'open' || isFinal(g)) return `<span class="${cls}">${inner}</span>`;
+    if (k === 'open' || isFinal(g)) return `<span class="${cls}"${flash.style}>${inner}</span>`;
     const who = side === 'over' ? 'Over' : side === 'under' ? 'Under' : teamName(g[side]);
-    const label = [bookFull(k), `${who} ${main}`, m !== 'ml' ? fmtOdds(p.odds) : '', isBest ? 'best price' : '', L?.m ? 'typed in' : '', old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
-    return `<button type="button" class="${cls}" data-bet="${g.id}|${m}|${side}|${k}" aria-label="${esc(label)}">${inner}</button>`;
+    const label = [bookFull(k), `${who} ${main}`, m !== 'ml' ? fmtOdds(p.odds) : '', isBest ? 'best price' : '', L?.m ? 'typed in' : '', flash.label, old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
+    return `<button type="button" class="${cls}"${flash.style} data-bet="${g.id}|${m}|${side}|${k}" aria-label="${esc(label)}">${inner}</button>`;
   };
   const rows = keys.filter((k) => k === 'cons' || k === 'open' || src[k] || S.books.find((b) => b.key === k && !b.feed)).map((k) => {
     const b = S.books.find((x) => x.key === k);

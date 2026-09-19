@@ -415,15 +415,15 @@ function pxCell(g, mkt, side, book, best, opts = {}) {
   if (!p || (p.odds == null && p.line == null)) return `<span class="px na" aria-hidden="true">—</span>`;
   const isBest = best && best.book === book && !isFinal(g);
   const L = mkt === 'h1' ? g.h1?.[book] : isLive(g) ? g.live?.[book] : g.books?.[book];
-  const flash = S.flashed.has(`${g.id}|${book}|${mkt === 'h1' ? 's' : mkt}`);
+  const flash = flashAttr(g.id, mkt === 'h1' ? 'h1' : isLive(g) ? 'live' : 'pre', book, m);
   const main = m === 'ml' ? fmtOdds(p.odds) : mkt === 't' ? `${side === 'over' ? 'o' : 'u'}${fmtTot(p.line)}` : fmtPts(p.line);
   const sub = opts.sub ?? (m === 'ml' ? '' : fmtOdds(p.odds));
   const who = side === 'over' ? 'Over' : side === 'under' ? 'Under' : teamName(g[side]);
   const old = isOld(L);
-  const label = [bookFull(book), `${who} ${m === 'ml' ? fmtOdds(p.odds) : mkt === 't' ? fmtTot(p.line) : fmtPts(p.line)}`, m === 'ml' ? '' : fmtOdds(p.odds), isBest ? 'best price' : '', L?.m ? 'typed in' : '', old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
-  const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash ? ' tick' : ''}${old ? ' old' : ''}`;
-  if (isFinal(g)) return `<span class="${cls}" aria-label="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
-  return `<button type="button" class="${cls}" data-bet="${g.id}|${m}|${side}|${book}" aria-label="${esc(label)}" title="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}${typeof edgeBadge === 'function' ? edgeBadge(g, m, side, book) : ''}</button>`;
+  const label = [bookFull(book), `${who} ${m === 'ml' ? fmtOdds(p.odds) : mkt === 't' ? fmtTot(p.line) : fmtPts(p.line)}`, m === 'ml' ? '' : fmtOdds(p.odds), isBest ? 'best price' : '', L?.m ? 'typed in' : '', flash.label, old ? `checked ${ago(L.seen)}` : ''].filter(Boolean).join(', ');
+  const cls = `px num${isBest ? ' best' : ''}${L?.m ? ' man' : ''}${flash.cls}${old ? ' old' : ''}`;
+  if (isFinal(g)) return `<span class="${cls}"${flash.style} aria-label="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>`;
+  return `<button type="button" class="${cls}"${flash.style} data-bet="${g.id}|${m}|${side}|${book}" aria-label="${esc(label)}" title="${esc(label)}">${esc(main)}${sub ? `<small>${esc(sub)}</small>` : ''}${typeof edgeBadge === 'function' ? edgeBadge(g, m, side, book) : ''}</button>`;
 }
 function bestFor(g, mkt, side) {
   const books = mkt === 'h1' ? g.h1 : isLive(g) ? g.live : g.books;
