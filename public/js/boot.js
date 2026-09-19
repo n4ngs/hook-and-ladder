@@ -88,6 +88,14 @@ document.addEventListener('click', (ev) => {
   if (d.csave !== undefined) { saveCounter(); return; }
   if (d.cdel) { api(`/api/manual?gid=${S.sheet.gid}&book=${d.cdel}`, { method: 'DELETE' }).then(() => openGame(S.sheet.gid)).catch((e) => toastText(e.message)); return; }
   if (d.back) { openGame(d.back); return; }
+  if (d.slipBook && S.sheet?.slip) { // a book tile in the slip: use that book and its price
+    readSlip();
+    const sl = S.sheet.slip, l = sl.legs[0], g = gameById(l?.gid);
+    sl.book = d.slipBook;
+    if (g && d.slipBook !== 'other') { const f = legFrom(g, l.mkt, l.side, d.slipBook); if (f.odds != null) { l.odds = f.odds; if (f.line != null) l.line = f.line; l.book = d.slipBook; } }
+    paintSlip();
+    return;
+  }
   if (d.savebet !== undefined) { saveBet(); return; }
   if (d.addleg !== undefined) {
     readSlip();

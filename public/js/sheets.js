@@ -424,6 +424,53 @@ function openSlip(opts = {}) {
   showSheet('slip', true);
 }
 
+// Book icons shipped in public/icons/books; books without one get a clean monogram.
+const BOOK_ICON = new Set(['circa', 'stn', 'czr', 'mgm', 'sp', 'wg', 'wynn', 'dk', 'fd', 'pin']);
+function bookIcon(k, size = 32) {
+  if (BOOK_ICON.has(k)) return `<img class="bk-ico" src="icons/books/${k}.png" width="${size}" height="${size}" alt="" loading="lazy">`;
+  const name = k === 'other' ? '…' : (S.books.find((b) => b.key === k)?.short || k).replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
+  return `<span class="bk-ico bk-mono" style="width:${size}px;height:${size}px" aria-hidden="true">${esc(name)}</span>`;
+}
+// Every book's price for this exact pick, best first, as big tappable tiles. Tapping one switches the slip to it.
+function slipBooksHTML(g, l, sel) {
+  const src = (l.mkt.startsWith('h1') ? g.h1 : isLive(g) ? g.live : g.books) || {};
+  const m = l.mkt === 'h1s' ? 'h1s' : l.mkt;
+  const rows = [];
+  for (const b of visibleBooks()) {
+    const L = src[b.key];
+    const p = sideOf(L, m, l.side);
+    if (!p || p.odds == null || (m !== 'ml' && p.line == null)) continue;
+    rows.push({ k: b.key, p, typed: !!L?.m, old: isOld(L) });
+  }
+  if (!rows.length) return '';
+  const best = bestOf(src, m, l.side)?.book;
+  rows.sort((a, b) => (a.k === best ? -1 : b.k === best ? 1 : 0) || (better(m, l.side, a.p, b.p) ? -1 : better(m, l.side, b.p, a.p) ? 1 : 0));
+  const priceTxt = (p) => (m === 'ml' ? fmtOdds(p.odds) : `${m === 't' || m === 'h1t' ? (l.side === 'over' ? 'o' : 'u') + fmtTot(p.line) : fmtPts(p.line)} ${fmtOdds(p.odds)}`);
+  return `<div class="slip-books-h"><span>Where to bet</span><span>Tap a book to use its price</span></div>
+    <div class="slip-books" role="group" aria-label="Choose a book">${rows.map((r) => `<button type="button" class="bk-tile${sel === r.k ? ' on' : ''}${r.old ? ' old' : ''}" data-slip-book="${r.k}" aria-pressed="${sel === r.k}" aria-label="${esc(`${bookFull(r.k)}: ${priceTxt(r.p)}${r.k === best ? ', best price' : ''}${r.typed ? ', typed in' : ''}${r.old ? ', price may be old' : ''}`.replace(MINUS, 'minus '))}">
+      ${bookIcon(r.k)}<span class="bk-n">${esc(bookName(r.k))}</span><span class="bk-p num">${esc(priceTxt(r.p))}</span>${r.k === best ? '<span class="bk-best">Best</span>' : r.typed ? '<span class="bk-best">Typed</span>' : ''}
+    </button>`).join('')}
+      <button type="button" class="bk-tile${sel === 'other' ? ' on' : ''}" data-slip-book="other" aria-pressed="${sel === 'other'}" aria-label="Another book">${bookIcon('other')}<span class="bk-n">Other</span><span class="bk-p">Type the price</span></button>
+    </div>`;
+}
+// The parlay button follows what's in your parlay right now.
+function slipBtnsHTML() {
+  const sl = S.sheet.slip;
+  const single = sl.legs.length === 1 && !sl.parlay;
+  let parlayBtn = '', parlayLine = '';
+  if (single) {
+    const l = sl.legs[0];
+    const n = S.parlay.length;
+    const inIt = S.parlay.some((x) => x.gid === l.gid && x.mkt === l.mkt);
+    const combo = n && Number.isFinite(l.odds) && Math.abs(l.odds) >= 100 ? toAm(S.parlay.reduce((p, x) => p * dec(x.odds), 1) * dec(l.odds)) : null;
+    if (n) parlayLine = `<p class="slip-parlay">Your parlay: ${plural(n, 'leg')} · <span class="num">${esc(fmtOdds(toAm(S.parlay.reduce((p, x) => p * dec(x.odds), 1))))}</span> <button type="button" class="k-link" data-parlay-open>Review</button></p>`;
+    parlayBtn = inIt ? `<button class="btn ghost" type="button" data-parlay-open>In your parlay ✓ · Review</button>`
+      : n ? `<button class="btn ghost" type="button" data-addleg>Add as leg ${n + 1}${combo != null ? ` · <span class="num">${esc(fmtOdds(combo))}</span>` : ''}</button>`
+      : `<button class="btn ghost" type="button" data-addleg>Start a parlay</button>`;
+  }
+  return `${parlayLine}<div class="row-btns">${parlayBtn}<button class="btn" type="button" data-savebet>Save bet</button></div>`;
+}
+
 function paintSlip() {
   const sl = S.sheet.slip;
   const body = $('#dlgBody');
@@ -437,16 +484,20 @@ function paintSlip() {
     <h2 id="dlgTitle">${single ? 'Log this bet' : `${legs.length}-leg parlay`}</h2>
     <p class="lede">${single ? esc(MKT_NAME[legs[0].l.mkt] || '') : 'Every leg has to win. Pushes drop out.'}</p>
     ${legs.map(({ l, g }, i) => `<div class="card slip-pick" style="margin-top:12px"><div><b class="num">${esc(legLabel(g, l))}</b><span>${esc(g.away.abbr)} @ ${esc(g.home.abbr)} · ${esc(isLive(g) ? `live, ${clockLabel(g)}` : `${dayLabel(g.start)} ${timeLabel(g.start)}`)}${rotOf(g, l.side === 'home' ? 'home' : 'away') ? ` · rot ${rotOf(g, l.side === 'home' ? 'home' : 'away')}` : ''}</span></div>${single ? '' : `<span class="num" style="font-weight:600">${esc(fmtOdds(l.odds))}</span><button class="ibtn" type="button" data-rmleg="${i}" aria-label="Remove ${esc(legLabel(g, l))}">✕</button>`}</div>`).join('')}
+    ${single && !sl.parlay ? slipBooksHTML(legs[0].g, legs[0].l, sl.book) : ''}
     <div class="fgrid">
       ${single && legs[0].l.mkt !== 'ml' ? `<label class="fld">Line<input class="inp" id="slLine" inputmode="text" autocomplete="off" value="${esc(lineVal)}"></label>` : ''}
       <label class="fld">${single ? 'Odds' : 'Ticket odds'}<input class="inp" id="slOdds" inputmode="text" autocomplete="off" value="${esc(Number.isFinite(odds) ? String(odds) : '')}"></label>
       <label class="fld">Stake ($)<input class="inp" id="slStake" inputmode="decimal" autocomplete="off" value="${esc(Number.isFinite(sl.stake) ? String(sl.stake) : '')}"></label>
-      <label class="fld">Book<select class="inp" id="slBook">${bookOpts}</select></label>
+      ${single && !sl.parlay && sl.book !== 'other' ? '' : `<label class="fld">Book<select class="inp" id="slBook">${bookOpts}</select></label>`}
       <label class="fld full">Note<input class="inp" id="slNote" style="font-weight:500;font-size:15px" placeholder="Optional: why you like it" value="${esc(sl.note || '')}"></label>
     </div>
     <div id="slCalc">${slipCalcHTML()}</div>
     <div class="err" id="slErr" role="alert"></div>
-    <div class="row-btns">${single && !sl.parlay ? `<button class="btn ghost" type="button" data-addleg>Add to parlay</button>` : ''}<button class="btn" type="button" data-savebet>Save bet</button></div>`;
+    <div id="slBtns">${slipBtnsHTML()}</div>`;
+  // Keep the chosen book's tile in view.
+  const on = body.querySelector('.bk-tile.on');
+  if (on) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - on.parentElement.offsetLeft - 16);
 }
 function slipOdds() {
   const sl = S.sheet.slip;
@@ -494,6 +545,8 @@ document.addEventListener('toggle', (ev) => { if (ev.target.matches?.('.k-slip')
 function updateSlipCalc() {
   const el = $('#slCalc');
   if (el) el.innerHTML = slipCalcHTML();
+  const bt = $('#slBtns');
+  if (bt) bt.innerHTML = slipBtnsHTML();
   showSlipProblems([]);
 }
 
