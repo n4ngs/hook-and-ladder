@@ -139,7 +139,7 @@ document.addEventListener('input', (ev) => {
 });
 document.addEventListener('change', (ev) => {
   if (ev.target.id === 'alertSel') setAlerts(ev.target.value);
-  if (ev.target.id === 'slBook') readSlip();
+  if (ev.target.id === 'slBook') { readSlip(); updateSlipCalc(); } // the Open-book link follows the book
   if (ev.target.id === 'pkGame') $('#pkSides').innerHTML = pickerSides(ev.target.value);
 });
 

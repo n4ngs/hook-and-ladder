@@ -102,7 +102,8 @@ function mergedBooks(G, W) {
   put('an', an?.books, W.at.an);
   put('vsin', vs?.books, VSIN_AT.t);
   put('an1', a1?.books, W.at.a1);
-  if (pin?.line) put('pin', { pin: pin.line }, W.at.pin);
+  // Pinnacle's age is when it last listed this game, not when we last polled: a game it pulled (often news) goes stale.
+  if (pin?.line) put('pin', { pin: pin.line }, pin.at || null);
   if (G.dk?.cur && (G.state === 'pre' || !an)) put('espn', { dk: G.dk.cur }, W.at.espn);
   const H = W.lines.full(G.id);
   for (const [k, L] of Object.entries(manual[G.id] || {})) {
@@ -114,8 +115,10 @@ function mergedBooks(G, W) {
 
 function mergedHalf(G, W) {
   const out = {};
-  for (const src of [W.a1.get(G.id)?.h1, W.vs.get(G.id)?.h1, W.pin.get(G.id)?.h1 ? { pin: W.pin.get(G.id).h1 } : null]) {
-    for (const [k, L] of Object.entries(src || {})) if (!out[k] && L && (L.s != null || L.t != null)) out[k] = L;
+  const pin = W.pin.get(G.id);
+  // Each first-half price carries when its source last confirmed it, so stale ones can be dimmed and skipped.
+  for (const [src, at] of [[W.a1.get(G.id)?.h1, W.at.a1], [W.vs.get(G.id)?.h1, VSIN_AT.t], [pin?.h1 ? { pin: pin.h1 } : null, pin?.at]]) {
+    for (const [k, L] of Object.entries(src || {})) if (!out[k] && L && (L.s != null || L.t != null)) out[k] = { ...L, seen: at || null };
   }
   return Object.keys(out).length ? out : null;
 }
@@ -330,7 +333,7 @@ async function pollPin() {
     const W = weekOf.get(gid);
     const prev = W.pin.get(gid);
     // Pinnacle takes games off its board at kickoff; keep the last pregame number.
-    W.pin.set(gid, patch.line ? patch : { ...prev, live: true });
+    W.pin.set(gid, patch.line ? { ...patch, at: Date.now() } : { ...prev, live: true }); // `at`: last time Pinnacle listed it
     const G = W.games.get(gid);
     if (G.state === 'pre' && patch.line) recordBooks(W, G);
   }

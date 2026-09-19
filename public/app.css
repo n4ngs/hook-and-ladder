@@ -448,7 +448,7 @@ textarea.inp{height:72px;padding:12px 14px;font-size:15px;font-weight:500;resize
 .calc > div{background:var(--surface);padding:12px var(--s2)}
 .calc .k{font-size:12px;color:var(--ink-2)}
 .calc .v{font-size:20px;font-weight:650;margin-top:2px}
-.calc .v.win{color:var(--win)}
+.calc .v.win{color:var(--ink)} /* green is only for your own winning tickets */
 .note{font-size:13px;color:var(--ink-2);margin-top:12px;line-height:1.45}
 .note b{color:var(--ink)}
 .err{color:var(--ink);font-size:13px;font-weight:600;margin-top:12px;min-height:18px;display:flex;align-items:center;gap:8px}
@@ -518,7 +518,7 @@ textarea.inp{height:72px;padding:12px 14px;font-size:15px;font-weight:500;resize
 .out > div{padding:12px;border-radius:var(--r-md);background:var(--fill);min-width:0}
 .out .k{font-size:11px;color:var(--ink-2)}
 .out .v{font-size:18px;font-weight:650;margin-top:2px}
-.out .v.win{color:var(--win)}
+.out .v.win{color:var(--ink)}
 .srcs .li .v{font-weight:500;font-size:12px;color:var(--ink-2)}
 .srcs .li .ok{color:var(--ink);font-weight:600}
 .srcs .li .bad{color:var(--accent);font-weight:600}

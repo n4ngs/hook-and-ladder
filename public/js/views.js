@@ -336,7 +336,7 @@ function renderLearn() {
       <div class="term"><b>Spread</b><span>Points added to the underdog. Alabama −19.5 has to win by 20 or more; Florida State +19.5 covers by losing by 19 or fewer.</span></div>
       <div class="term"><b>Total (over/under)</b><span>Both teams' points added together. Bet whether the game lands over or under the number.</span></div>
       <div class="term"><b>Moneyline</b><span>Just pick the winner. −300 means risk $300 to win $100; +250 means $100 wins $250.</span></div>
-      <div class="term"><b>Juice</b><span>The −110 next to most lines. It's the book's cut: risk $110 to win $100. Better juice at another book is free money over time.</span></div>
+      <div class="term"><b>Juice</b><span>The −110 next to most lines. It's the book's cut: risk $110 to win $100. Better juice at another book adds up over a season.</span></div>
       <div class="term"><b>Key numbers &amp; the hook</b><span>${esc(keyLine)} The ".5" is called the hook.</span></div>
       <div class="term"><b>Line movement</b><span>Books move numbers when money comes in. Movement from sharp books like Circa and Pinnacle tends to matter most.</span></div>
       <div class="term"><b>Steam &amp; reverse moves</b><span>Steam is several books moving the same way within minutes. A reverse move is the line going against the side most tickets are on.</span></div>
@@ -346,7 +346,7 @@ function renderLearn() {
 
 // ------------------------------------------------------------ BOARD
 const FILTERS = [
-  ['all', 'All'], ['top25', 'Top 25'], ['mine', 'My teams'], ['bets', 'My bets'], ['moving', 'Moving'], ['live', 'Live'], ['edges', 'Edges'],
+  ['all', 'All'], ['top25', 'Top 25'], ['mine', 'My teams'], ['bets', 'My bets'], ['moving', 'Moving'], ['live', 'Live'], ['edges', 'Vs sharp'],
   ['SEC', 'SEC'], ['Big Ten', 'Big Ten'], ['Big 12', 'Big 12'], ['ACC', 'ACC'], ['American', 'American'], ['Mountain West', 'MWC'],
   ['Sun Belt', 'Sun Belt'], ['MAC', 'MAC'], ['C-USA', 'C-USA'], ['Pac-12', 'Pac-12'], ['Independent', 'Ind.'],
 ];

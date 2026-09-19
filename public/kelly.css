@@ -9,13 +9,22 @@
 .kelly .k-ex b{color:var(--ink);font-weight:600}
 .kelly .k-sub{margin:var(--s3) 0 0;font-size:15px;font-weight:600;letter-spacing:-.01em}
 
-/* bet slip: the suggestion under the payout math */
-.k-slip{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 0;padding:10px 12px 10px 14px;border-radius:var(--r-md);background:var(--surface);font-size:14px;line-height:1.35;color:var(--ink-2)}
+/* bet slip: Kelly sizing sits collapsed; opening it is your choice, and it never fills the stake by itself */
+.k-slip{margin:12px 0 0;padding:4px 14px;border-radius:var(--r-md);background:var(--surface);font-size:14px;line-height:1.4;color:var(--ink-2)}
+.k-slip summary{min-height:44px;display:flex;align-items:center;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;list-style:none}
+.k-slip summary::-webkit-details-marker{display:none}
+.k-slip summary::after{content:"";width:7px;height:7px;margin-left:8px;border-right:1.5px solid var(--ink-2);border-bottom:1.5px solid var(--ink-2);transform:rotate(45deg) translateY(-2px);transition:transform .2s var(--ease)}
+.k-slip[open] summary::after{transform:rotate(-135deg) translateY(-1px)}
+.k-slip p{margin:0 0 8px}
 .k-slip b{color:var(--ink);font-weight:600}
-.k-slip.none{display:block}
-.k-use{flex:none;min-height:44px;padding:0 14px;border-radius:999px;background:var(--ink);color:var(--surface);font-size:13px;font-weight:600;white-space:nowrap}
-.k-on{flex:none;font-size:12px;font-weight:600;color:var(--ink-2);padding:0 6px}
+.k-on{display:inline-block;margin:0 0 10px;font-size:12px;font-weight:600;color:var(--ink-2)}
 .k-link{min-height:44px;font-size:13px;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:2px}
+.k-slip .k-link{display:inline-flex;align-items:center;margin-bottom:4px}
+.calc .v.soft{font-weight:500;color:var(--ink-2)}
+/* the plain link to a Nevada book's own page */
+.book-go{display:flex;flex-direction:column;gap:2px;margin:12px 0 0;font-size:12px;color:var(--ink-2)}
+.book-go .k-link{display:inline-flex;align-items:center;width:max-content;font-size:14px}
+@media (prefers-reduced-motion:reduce){.k-slip summary::after{transition:none}}
 
 /* Edges sheet: how stakes are sized, with a way to change it */
 .edge-sizing{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:12px 0 0;font-size:13px;color:var(--ink-2)}

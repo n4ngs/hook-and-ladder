@@ -371,19 +371,24 @@ function legLabel(g, l) {
   return '';
 }
 // The fair price for the side from the sharpest book that has it, with the vig removed.
+// The sharp read for one bet: the same calculation Edge Finder shows, so the slip and the list always agree.
+// Pre-game only; live prices aren't compared. Returns { p, push, ev, book, est, conf } or null.
 function fairFor(g, l) {
-  for (const k of ['pin', 'circa', 'cons']) {
-    const L = (l.mkt.startsWith('h1') ? g.h1 : isLive(g) ? g.live : g.books)?.[k];
-    const a = sideOf(L, l.mkt, l.side);
-    const other = { home: 'away', away: 'home', over: 'under', under: 'over' }[l.side];
-    const b = sideOf(L, l.mkt, other);
-    if (!a || !b || a.odds == null || b.odds == null) continue;
-    if (l.mkt !== 'ml' && a.line !== l.line) continue;
-    const nv = noVig(a.odds, b.odds);
-    return { p: nv.a, book: k };
-  }
-  return null;
+  if (!g || !isPre(g) || typeof edgePrice !== 'function') return null;
+  const r = edgePrice(g, l.mkt, l.side, l.mkt === 'ml' ? null : l.line, l.odds, l.book || null);
+  return r ? { p: r.p, push: r.push, ev: r.ev, book: r.src, est: r.est, conf: r.conf } : null;
 }
+// Nevada sportsbook pages only (each checked to load). DraftKings, FanDuel and Pinnacle don't take bets in Nevada,
+// Wynn's sportsbook page is gone and Boomer's has no site, so those get no link. On a phone, a book's page opens its
+// app when the app is installed.
+const BOOK_SITE = {
+  mgm: 'https://www.nv.betmgm.com/en/sports',
+  czr: 'https://sportsbook.caesars.com/us/nv/bet',
+  circa: 'https://www.circasports.com/',
+  stn: 'https://stnsports.com/',
+  wg: 'https://www.superbook.com/',
+  sp: 'https://southpointcasino.com/',
+};
 
 // Where a bet slip was opened from (a game, Edges, Sweat Mode, the Time Machine) and how far down you were, so
 // Add to parlay and Save bet put you back there instead of closing everything onto the tab underneath.
@@ -459,22 +464,33 @@ function slipCalcHTML() {
   const okOdds = Number.isFinite(odds) && Math.abs(odds) >= 100;
   const win = okOdds && sl.stake > 0 ? toWin(sl.stake, odds) : null;
   const fair = single && okOdds ? fairFor(legs[0].g, legs[0].l) : null;
-  const edge = fair ? dec(odds) * fair.p - 1 : null;
+  const edge = fair ? fair.ev : null;
   const l0 = legs[0]?.l;
   const words = !single || !l0 ? '' : l0.mkt === 's' && Number.isFinite(l0.line) ? spreadWords(legs[0].g[l0.side], l0.line) : l0.mkt === 't' && Number.isFinite(l0.line) ? totalWords(l0.line) : l0.mkt === 'ml' && okOdds ? oddsWords(l0.odds) : '';
-  return `<div class="calc"><div><div class="k">To win</div><div class="v num win">${win == null ? '—' : fmtMoney(Math.round(win * 100) / 100)}</div></div><div><div class="k">Implied</div><div class="v num">${okOdds ? fmtPct(imp(odds), 1) : '—'}</div></div><div><div class="k">${fair ? `vs ${esc(bookName(fair.book))} fair` : 'Fair price'}</div><div class="v num">${edge == null ? '—' : `${edge > 0 ? '+' : ''}${(edge * 100).toFixed(1)}%`}</div></div></div>
+  return `<div class="calc"><div><div class="k">To win</div><div class="v num">${win == null ? '—' : fmtMoney(Math.round(win * 100) / 100)}</div></div><div><div class="k">Implied</div><div class="v num">${okOdds ? fmtPct(imp(odds), 1) : '—'}</div></div><div><div class="k">${fair ? `vs ${esc(bookName(fair.book))}${fair.est ? ' (est.)' : ''}` : 'vs sharp'}</div><div class="v num soft">${edge == null ? '—' : `${fair.est ? '≈ ' : ''}${edge >= 0 ? '+' : MINUS}${Math.abs(Math.round(edge * 100))}%`}</div></div></div>
     ${kellySlipHTML(fair, odds, okOdds, sl.stake)}
-    ${words || fair ? `<p class="note">${esc(words)}${fair ? ` With the vig removed, the ${esc(bookName(fair.book))} price says this side wins ${fmtPct(fair.p, 1)} of the time.` : ''}</p>` : ''}`;
+    ${words || fair ? `<p class="note">${esc(words)}${fair ? ` With the cut removed, ${esc(bookName(fair.book))}’s price implies about ${Math.round(fair.p * 100)}% for this side: the market’s estimate, not a sure thing. ${fair.ev > 0 ? `Reading: ${esc(EDGE_CONF[fair.conf] || '')}.` : 'This price is at or below the sharp price.'}` : ''}</p>` : ''}
+    ${bookLinkHTML(single ? S.sheet.slip.book : '')}`;
 }
-// Kelly stake at the user's settings, from the sharp fair chance. One tap puts it in the stake box.
+// Kelly sizing, only when asked: collapsed by default, never pre-fills the stake, and needs a bankroll you entered.
 function kellySlipHTML(fair, odds, okOdds, stake) {
   if (!fair || !okOdds) return '';
-  const k = kellyStake(fair.p, odds);
+  const c = kellyCfg();
+  const open = S.sheet?.slip?.kOpen ? ' open' : '';
+  if (!c.bankroll) return `<details class="k-slip"${open}><summary>Kelly sizing</summary><p>Kelly sizing needs a bankroll. <button type="button" class="k-link" data-kelly-settings>Set one in Tools</button></p></details>`;
+  const k = kellyStake(fair.p * (1 - (fair.push || 0)), odds, fair.push || 0);
   if (!k) return '';
-  if (!k.dollars) return `<p class="k-slip none">No edge at ${esc(fmtOdds(odds))} against the fair price, so Kelly says <b>no bet</b>. <button type="button" class="k-link" data-kelly-settings>Sizing settings</button></p>`;
+  if (!k.dollars) return `<details class="k-slip"${open}><summary>Kelly sizing</summary><p>At ${esc(fmtOdds(odds))} this is at or below the sharp price, so Kelly sizing is $0.</p></details>`;
   const same = Math.abs((stake || 0) - k.dollars) < 0.5;
-  return `<p class="k-slip"><span><b>${esc(kellyName())}</b> says <b class="num">${esc(fmtMoney(k.dollars))}</b> · ${(k.pct * 100).toFixed(1)}% of your bankroll${k.capped ? ', held to your cap' : ''}</span>${same ? '<span class="k-on">In use</span>' : `<button type="button" class="k-use" data-kelly-use="${k.dollars}">Use ${esc(fmtMoney(k.dollars))}</button>`}</p>`;
+  return `<details class="k-slip"${open}><summary>Kelly sizing</summary><p>At your ${esc(kellyName())} settings this works out to <b class="num">${esc(fmtMoney(k.dollars))}</b> (${(k.pct * 100).toFixed(1)}% of your bankroll${k.capped ? ', held to your cap' : ''}). Kelly assumes the win chance is right; if it’s too high, Kelly bets too much.</p>${same ? '<span class="k-on">Stake matches</span>' : `<button type="button" class="k-link" data-kelly-use="${k.dollars}">Put ${esc(fmtMoney(k.dollars))} in the stake</button>`}</details>`;
 }
+// A plain link to the book's own app or site, to place the bet there. Prices there can differ.
+function bookLinkHTML(book) {
+  const url = BOOK_SITE[book];
+  if (!url) return '';
+  return `<p class="book-go"><a class="k-link" href="${url}" target="_blank" rel="noopener noreferrer">Open ${esc(bookFull(book))} ↗</a><span>Prices there can differ from what’s shown here. Check the ticket before you bet.</span></p>`;
+}
+document.addEventListener('toggle', (ev) => { if (ev.target.matches?.('.k-slip') && S.sheet?.slip) S.sheet.slip.kOpen = ev.target.open; }, true);
 function updateSlipCalc() {
   const el = $('#slCalc');
   if (el) el.innerHTML = slipCalcHTML();
