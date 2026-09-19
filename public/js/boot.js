@@ -10,16 +10,21 @@ function setTab(tab, push = true) {
   S.tab = tab;
   for (const v of $$('.view')) v.classList.toggle('on', v.dataset.view === tab);
   for (const a of $$('[data-tab]')) a.classList.toggle('on', a.dataset.tab === tab && !a.classList.contains('brand'));
+  store.set('lastTab', tab);
   if (push && location.hash !== `#${tab}`) history.replaceState(null, '', `#${tab}`);
   if (tab === 'board' && !S.boardWeek) S.boardWeek = S.def;
   window.scrollTo({ top: 0 });
   renderAll();
 }
+// A tab hash switches tabs. Anything else (#game/…, #edges, #sweat, #tm/…) is a sheet that opens over the tab you
+// were on, so a restart or a deep link never throws you back to Live. Feature sheets open themselves from the hash.
+let routed = false;
 function route() {
   const h = location.hash.slice(1);
+  if (TABS.includes(h)) { setTab(h, false); routed = true; return; }
+  if (!routed) { const last = store.get('lastTab', 'live'); setTab(TABS.includes(last) ? last : 'live', false); routed = true; }
   const gm = /^game\/(\d+)$/.exec(h);
-  if (gm) { if (!TABS.includes(S.tab)) setTab('live', false); openGame(gm[1]); return; }
-  setTab(TABS.includes(h) ? h : 'live', false);
+  if (gm) openGame(gm[1]);
 }
 window.addEventListener('hashchange', route);
 
@@ -152,7 +157,7 @@ $('#dlg').addEventListener('click', (ev) => { if (ev.target === $('#dlg')) close
 $('#dlg').addEventListener('close', () => { if (S.sheet) closeSheet(); });
 
 // Clocks, "3 min ago" labels and the move card's 20-minute window all age without new data.
-setInterval(() => { if (S.tab === 'live') renderLive(); renderPill(); }, 30000);
+setInterval(() => { if (S.tab === 'live' && !S.sheet) renderLive(); renderPill(); }, 30000);
 
 // ------------------------------------------------------------ start
 applyTheme();

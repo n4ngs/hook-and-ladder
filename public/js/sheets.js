@@ -15,6 +15,7 @@ function closeSheet() {
   clearTimeout(gameTimer);
   if (dlg().open) dlg().close();
   if (location.hash.startsWith('#game/')) history.replaceState(null, '', `#${S.tab}`);
+  invalidate(); // the tab underneath wasn't redrawn while the sheet was up
 }
 
 // ------------------------------------------------------------ one game

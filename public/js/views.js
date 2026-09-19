@@ -4,11 +4,15 @@
 function renderAll() {
   renderPill();
   renderNav();
+  renderTray();
+  // While a sheet covers the screen, leave the tab underneath alone: on a busy Saturday the board is ~10k nodes and
+  // rebuilding it on every live update froze phones mid-tap (and got the app restarted). closeSheet() catches up.
+  if (S.sheet && dlg().open && renderAll.drawn === S.tab) { refreshSheet(); return; }
+  renderAll.drawn = S.tab; // each tab still draws once, so a sheet opened at start-up has something behind it
   if (S.tab === 'live') renderLive();
   if (S.tab === 'board') renderBoard();
   if (S.tab === 'bets') renderBets();
   if (S.tab === 'tools') renderTools();
-  renderTray();
   renderFoot();
   if (S.sheet) refreshSheet();
 }
@@ -688,6 +692,8 @@ function renderFoot() {
   $('#foot').innerHTML = `Lines from Action Network, VSiN, Pinnacle and ESPN. Scores from ESPN, weather from Open-Meteo.<br>Numbers can lag the window by a few minutes. Check the ticket before you bet. 21+. Gambling problem? Call 1-800-GAMBLER.`;
 }
 function renderTray() {
+  const saved = JSON.stringify(S.parlay);
+  if (saved !== renderTray.last) { renderTray.last = saved; store.set('parlay', { at: Date.now(), legs: S.parlay }); }
   const t = $('#tray');
   t.hidden = !S.parlay.length;
   if (!S.parlay.length) return;

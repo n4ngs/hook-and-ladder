@@ -64,7 +64,7 @@ const S = {
   alerts: store.get('alerts', 'off'), // off | mine | all
   theme: store.get('theme', 'auto'),
   unit: store.get('unit', 100),
-  parlay: [],             // legs waiting in the tray
+  parlay: (() => { const p = store.get('parlay', null); return p && Array.isArray(p.legs) && Date.now() - (p.at || 0) < 24 * 3600e3 ? p.legs.slice(0, 12) : []; })(), // legs waiting in the tray, kept across restarts for a day
   ticks: new Map(),       // "gid|book|mkt" -> last value, for flashing changed prices
   flashed: new Map(),     // flash key -> time the price changed (live.js flashAttr)
   sheet: null,            // { kind, gid, ... }
