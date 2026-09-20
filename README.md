@@ -92,6 +92,7 @@ starts at the true open.
 | `PORT` | `4848` | Port to serve on |
 | `LIVE_MS` | `8000` | How often scores are checked while games are live, in ms (minimum 4000) |
 | `ODDS_MS` | `15000` | How often lines are checked near and during games, in ms (minimum 8000) |
+| `HOT_MS` | `9000` | How often lines are checked in the last 15 minutes before kickoff and in game (minimum 6000) |
 | `VSIN_MS` | `120000` | How often the Vegas line tracker is checked (minimum 60000) |
 | `PIN_MS` | `600000` | How often Pinnacle is checked (minimum 300000) |
 | `SOURCES_OFF` | | Comma list of sources to skip: `vsin`, `pinnacle` |
@@ -111,6 +112,14 @@ the app's public address instead of your Wi-Fi.
 
 The login cookie stays valid until the code changes, so changing `ACCESS_CODE` signs every device out.
 
+### Sharing it with friends
+
+One access code lets everyone in, and each device still gets its own private log. A random id is set in a
+secure cookie on the first visit; bets, counter numbers and CSV exports are scoped to that id, so nobody
+reads or moves anybody else's. The board itself — feeds, line history, closing lines — is shared, which is
+the point. Changes are capped at 120 per device per five minutes, well above real use, so one stuck script
+can't churn the files. To read one log from a second device, use the link code in Tools.
+
 ## Files
 
 ```
@@ -123,7 +132,8 @@ lib/lines.js       Line history, steam / key-number / flip detection, closing li
 lib/bets.js        Your bets: validation, grading, closing line value, CSV
 lib/weather.js     Kickoff weather (Open-Meteo)
 lib/margins.js     Key numbers from last season's finals
-lib/books.js       The list of sportsbooks and where each one's numbers come from
+lib/books.js       The list of sportsbooks, where each one's numbers come from, and its site and app
+lib/manual.js      Counter numbers, kept per device
 lib/util.js        Fetch with backoff, dates, files, team-name matching
 public/            The app: index.html, app.css, js/core, live, views, sheets, boot
 railway.json       Railway deploy settings
