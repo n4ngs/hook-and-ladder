@@ -135,6 +135,7 @@ function openOf(G, W, books) {
 
 function pub(G, W) {
   const an = W.an.get(G.id) || {};
+  const P = W.pin.get(G.id) || {};
   const books = mergedBooks(G, W);
   const H = W.lines.full(G.id);
   const wx = G.venue?.indoor ? { dome: true } : { ...(G.wx || {}), ...(W.wx.get(G.id) || {}) };
@@ -155,7 +156,15 @@ function pub(G, W) {
     tt: an.tt || null,
     h1: mergedHalf(G, W),
     opens: W.vs.get(G.id)?.open || null,
-    pinLimit: W.pin.get(G.id)?.limit ?? null,
+    pinLimit: P.limit ?? null,
+    // The in-play sharp number and the only thing that makes it usable: how old the price is. UNITS: `age`
+    // is MILLISECONDS. Pinnacle's HTTP header is seconds and it is converted here, once, because every
+    // consumer compares against a ms budget — publishing the raw header would make a five-minute-old
+    // price read as 300ms, fresh, which is the worst bug this could have. The guest feed is CDN-cached for
+    // up to ~15 minutes, so most of the time this number is too old to use, and that is the honest answer.
+    pinLive: P.liveLine
+      ? { line: P.liveLine, limit: P.liveLimit ?? null, age: Number.isFinite(P.liveAge) ? P.liveAge * 1000 : null }
+      : null,
     prob: G.state === 'in' ? an.prob || null : null,
     tickets: an.bets || null,
     fpi: W.fpi.get(G.id)?.home ?? null,
@@ -335,8 +344,12 @@ async function pollPin() {
   for (const [gid, patch] of PIN.matchPinnacle(pg, all)) {
     const W = weekOf.get(gid);
     const prev = W.pin.get(gid);
-    // Pinnacle takes games off its board at kickoff; keep the last pregame number.
-    W.pin.set(gid, patch.line ? { ...patch, at: Date.now() } : { ...prev, live: true }); // `at`: last time Pinnacle listed it
+    // Pinnacle takes the pre-game parent off its board at kickoff and lists the game again as a live
+    // child. Keep the last pregame number as `line` — that is what the game closed at — and let the
+    // in-play price ride alongside it, never over it.
+    W.pin.set(gid, patch.line
+      ? { ...patch, at: Date.now() }
+      : { ...prev, ...patch, line: prev?.line ?? null, h1: prev?.h1 ?? null, limit: prev?.limit ?? null, live: true, at: Date.now() }); // `at`: last time Pinnacle listed it
     const G = W.games.get(gid);
     if (G.state === 'pre' && patch.line) recordBooks(W, G);
   }
@@ -553,8 +566,7 @@ const TYPES = {
   '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8',
 };
 function sendJSON(res, code, body) {
-  res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(body));
+  sendBody(res, code, JSON.stringify(body), { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
 }
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -698,6 +710,43 @@ try{
 }catch(x){}
 </script>`.replace('{mode}', JSON.stringify(mode)));
 }
+/* ------------------------------------------------------------------ compression
+
+   Nothing was compressed, and static files went out with cache-control: no-cache and no validator, so
+   every load re-downloaded the whole client. Built-in zlib keeps the zero-dependency rule. Compressed
+   static files are cached in memory keyed by mtime, so a file is compressed once per edit. Brotli when
+   the browser takes it, gzip otherwise.
+
+   /api/stream is deliberately NOT compressed: a compressor in front of SSE can buffer a live price
+   update until the next flush. Live beats small. */
+const zlib = require('zlib');
+const COMPRESSIBLE = /^(?:text\/|application\/(?:json|javascript|manifest\+json)|image\/svg)/;
+const COMPRESS_MIN = 1024;
+const zCache = new Map();  // `${file}|${mtime}|${enc}` -> Buffer
+const fileMtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
+
+function encFor(res) {
+  const ae = String(res.__ae || '');
+  if (/\bbr\b/.test(ae)) return 'br';
+  if (/\bgzip\b/.test(ae)) return 'gzip';
+  return null;
+}
+const zip = (buf, enc) => (enc === 'br'
+  ? zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } })
+  : zlib.gzipSync(buf, { level: 6 }));
+
+// One place that decides whether a response is worth compressing, and does it.
+function sendBody(res, code, body, headers) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  const type = String(headers['content-type'] || '');
+  const enc = buf.length >= COMPRESS_MIN && COMPRESSIBLE.test(type) ? encFor(res) : null;
+  if (!enc) { res.writeHead(code, headers); return res.end(buf); }
+  let out;
+  try { out = zip(buf, enc); } catch { res.writeHead(code, headers); return res.end(buf); }
+  res.writeHead(code, { ...headers, 'content-encoding': enc, vary: 'accept-encoding', 'content-length': out.length });
+  res.end(out);
+}
+
 // public/index.html, read once and re-read when it changes on disk.
 let idxCache = { mtime: 0, html: '' };
 function indexHTML() {
@@ -708,6 +757,7 @@ function indexHTML() {
 }
 
 const server = http.createServer(async (req, res) => {
+  res.__ae = req.headers['accept-encoding'] || '';   // read by sendBody(); keeps every call site unchanged
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const p = url.pathname;
   const M = req.method;
@@ -826,10 +876,11 @@ const server = http.createServer(async (req, res) => {
     // Take the credential back out of the address bar as soon as it has done its job.
     stash += '<script>try{if(location.search)history.replaceState(null,"",location.pathname)}catch(e){}</script>';
     const html = indexHTML().replace('<link rel="manifest" href="manifest.webmanifest">', link + stash);
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store', vary: 'cookie' });
-    return res.end(html);
+    return sendBody(res, 200, html, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store', vary: 'cookie' });
   }
-  Group.note(uid, Group.byToken(cookieOf(req).hl_key || '')?.id || null);
+  // `self` records the owner's own phone so it is visible in the Admin Center. Only on a board with an
+  // access code: without one everybody is the owner, and every passer-by would become a row.
+  Group.note(uid, Group.byToken(cookieOf(req).hl_key || '')?.id || null, { ua: req.headers['user-agent'], addr: clientIp(req), self: role === 'owner' && !!ACCESS_CODE });
   const ownerOnly = () => sendJSON(res, 403, { error: 'Only the person who runs this board can do that.' });
   if (M !== 'GET' && M !== 'HEAD' && p.startsWith('/api/') && !writeBudget(uid)) return sendJSON(res, 429, { error: 'That\u2019s a lot of changes at once. Give it five minutes.' });
   try {
@@ -908,6 +959,151 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { name: P.name || '', bets: Bets.list(pm[1]).map(({ owner, ...b }) => b) });
     }
     // ---- your log: status, your name, link another device, claim pre-accounts bets
+    /* Owner-only, and deliberately richer than /api/group.
+
+       A shared board's owner can already see who is on it and what they have running. What they cannot
+       see is the shape of it: who is actually any good, who has gone quiet, who is betting more than
+       they used to. All of that is derivable from records already on disk — no new tracking, nothing
+       collected that was not already being stored to run the board.
+
+       The sharpest column here is closing line value. Win rate over a handful of bets is mostly noise;
+       whether someone consistently beats the number they bet into is the one measure that means
+       something at this sample size, and every settled leg already carries it.
+
+       The app makes no privacy claim to a guest in either direction — it does not announce this view, and
+       it must not tell anyone their log is private, because it is not. */
+    if (p === '/api/group/activity' && M === 'GET') {
+      if (role !== 'owner') return ownerOnly();
+      /* `since` is the background poll the owner's app runs to notice somebody joining or betting. It
+         answers with the new events only and skips the ledger entirely, so watching the board costs a
+         few hundred bytes a minute instead of the whole log. */
+      const since = Number(url.searchParams.get('since')) || 0;
+      if (since) {
+        const out = [];
+        const nm = new Map(Group.people().map((P) => [P.uid, P.name || '']));
+        for (const P of Group.people()) {
+          if (P.uid === uid) continue;                       // the owner's own comings and goings are not news
+          if (P.first && P.first > since) out.push({ t: P.first, kind: 'joined', uid: P.uid, name: nm.get(P.uid) || '', dev: P.dev || '' });
+        }
+        for (const [owner, list] of Bets.byOwner()) {
+          if (owner === uid || !nm.has(owner)) continue;
+          for (const b of list) {
+            const t = Date.parse(b.placed) || b.created || 0;
+            if (t > since) out.push({ t, kind: 'placed', uid: owner, name: nm.get(owner) || '', stake: b.stake, book: b.book || '', legs: (b.legs || []).length });
+            if (b.settled && b.settled > since) out.push({ t: b.settled, kind: b.status, uid: owner, name: nm.get(owner) || '', stake: b.stake, net: b.net });
+          }
+        }
+        out.sort((a, b) => a.t - b.t);
+        return sendJSON(res, 200, { now: Date.now(), since, events: out.slice(-25) });
+      }
+      const by = Bets.byOwner();
+      const people = Group.people();   // every device, the owner's own included and marked below
+      const nameOf = new Map(people.map((P) => [P.uid, P.name || 'Someone']));
+      const median = (a) => { if (!a.length) return null; const v = [...a].sort((x, y) => x - y); const m = v.length >> 1; return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
+      const timeline = [];
+      const rows = people.map((P) => {
+        const bets = by.get(P.uid) || [];
+        const done = bets.filter((b) => b.status === 'won' || b.status === 'lost' || b.status === 'push');
+        const open = bets.filter((b) => b.status === 'open');
+        const stakes = bets.map((b) => b.stake).filter((x) => x > 0);
+        const clvPts = [], mkts = {}, books = {};
+        for (const b of bets) {
+          for (const l of b.legs || []) {
+            if (l.clv && Number.isFinite(l.clv.pts)) clvPts.push(l.clv.pts);
+            if (l.mkt) mkts[l.mkt] = (mkts[l.mkt] || 0) + 1;
+          }
+          if (b.book) books[b.book] = (books[b.book] || 0) + 1;
+          const t = Date.parse(b.placed) || b.created || 0;
+          if (t) timeline.push({ t, kind: 'placed', uid: P.uid, name: nameOf.get(P.uid), stake: b.stake, book: b.book || '', legs: (b.legs || []).length, status: b.status });
+          if (b.settled) timeline.push({ t: b.settled, kind: b.status, uid: P.uid, name: nameOf.get(P.uid), stake: b.stake, net: b.net, legs: (b.legs || []).length });
+        }
+        if (P.first) timeline.push({ t: P.first, kind: 'joined', uid: P.uid, name: nameOf.get(P.uid), via: P.via || null });
+        // Current run, newest settled first.
+        const seq = done.slice().sort((a, b) => (b.settled || 0) - (a.settled || 0));
+        let streak = 0, dir = null;
+        for (const b of seq) {
+          if (b.status === 'push') continue;
+          if (dir == null) { dir = b.status; streak = 1; } else if (b.status === dir) streak++; else break;
+        }
+        const days = P.first ? Math.max(1, Math.round((Date.now() - P.first) / 86400e3)) : 1;
+        const risked = done.reduce((t, b) => t + (b.stake || 0), 0);
+        const net = done.reduce((t, b) => t + (b.net || 0), 0);
+        return {
+          uid: P.uid, name: P.name || '', via: P.via || null, first: P.first || null, last: P.last || null,
+          dev: P.dev || '', addr: P.addr || '', opens: P.opens || 0, seen: P.seen || [], self: P.uid === uid,
+          n: bets.length, openN: open.length,
+          openRisk: open.reduce((t, b) => t + (b.stake || 0), 0),
+          won: done.filter((b) => b.status === 'won').length,
+          lost: done.filter((b) => b.status === 'lost').length,
+          push: done.filter((b) => b.status === 'push').length,
+          net, risked, roi: risked > 0 ? net / risked : null,
+          avgStake: stakes.length ? stakes.reduce((a, b) => a + b, 0) / stakes.length : null,
+          maxStake: stakes.length ? Math.max(...stakes) : null,
+          medStake: median(stakes),
+          clvN: clvPts.length,
+          clvAvg: clvPts.length ? clvPts.reduce((a, b) => a + b, 0) / clvPts.length : null,
+          clvBeat: clvPts.length ? clvPts.filter((x) => x > 0).length / clvPts.length : null,
+          perWeek: bets.length / Math.max(1, days / 7),
+          mkts, books, streak, streakKind: dir,
+          lastBet: bets.length ? Math.max(...bets.map((b) => Date.parse(b.placed) || b.created || 0)) : null,
+        };
+      });
+      timeline.sort((a, b) => b.t - a.t);
+      /* Every tracked bet on the board, settled ones included, newest first.
+
+         /api/group deliberately sends only what is running plus counts for the rest, because it is the
+         summary a shared board paints constantly. This is the owner's ledger: the whole log, with legs
+         and closing line value, so nothing about the board is visible to the app but invisible to the
+         person who runs it. Capped so one very busy season cannot make the response unbounded; the cap
+         is reported rather than silently applied. */
+      const all = [];
+      for (const [owner, list] of by) {
+        if (!nameOf.has(owner) && owner !== uid) continue;   // orphaned rows are not somebody's activity
+        for (const b of list) {
+          all.push({
+            id: b.id, uid: owner, name: owner === uid ? 'You' : (nameOf.get(owner) || 'Someone'),
+            placed: b.placed, created: b.created, settled: b.settled,
+            book: b.book || '', stake: b.stake, odds: b.odds, status: b.status, net: b.net,
+            note: b.note || '',
+            legs: (b.legs || []).map((l) => ({ gid: l.gid, mkt: l.mkt, side: l.side, line: l.line, odds: l.odds, team: l.team || null, state: l.state || null, clv: l.clv || null })),
+          });
+        }
+      }
+      all.sort((a, b) => (Date.parse(b.placed) || b.created || 0) - (Date.parse(a.placed) || a.created || 0));
+      const CAP = 400;
+      return sendJSON(res, 200, {
+        now: Date.now(), people: rows, timeline: timeline.slice(0, 60),
+        bets: all.slice(0, CAP), betsTotal: all.length, capped: all.length > CAP,
+      });
+    }
+    /* Clear a device, or sweep the residue of testing.
+
+       Owner-only. `bets=1` also drops that device's tracked bets, which is a separate and larger act
+       than tidying a list, so it is never the default — the caller has to ask for it and the UI says
+       which it is doing. A cleared device is not banned: a live share link lets it back in as a new row. */
+    const rmPerson = /^\/api\/group\/person\/([a-f0-9]{8,64})$/.exec(p);
+    if (rmPerson && M === 'DELETE') {
+      if (role !== 'owner') return ownerOnly();
+      const target = rmPerson[1];
+      if (target === uid) return sendJSON(res, 400, { error: 'That is this device. Clearing yourself would lock you out of your own board.' });
+      const bets = url.searchParams.get('bets') === '1' ? Bets.removeOwner(target) : 0;
+      const gone = Group.forget(target);
+      if (!gone && !bets) return sendJSON(res, 404, { error: 'Nobody here by that id.' });
+      log('group: cleared device', target.slice(0, 8), bets ? `and ${bets} bet(s)` : '(bets kept)');
+      emitSnapshot();
+      return sendJSON(res, 200, { ok: true, bets });
+    }
+    // The dozen empty rows a few people leave behind while a link is being tested.
+    if (p === '/api/group/sweep' && M === 'POST') {
+      if (role !== 'owner') return ownerOnly();
+      const by = Bets.byOwner();
+      const ids = Group.idle(uid, (k) => (by.get(k) || []).length > 0);
+      let n = 0;
+      for (const id of ids) if (Group.forget(id)) n++;
+      log('group: swept', n, 'unnamed device(s) with no bets');
+      if (n) emitSnapshot();
+      return sendJSON(res, 200, { ok: true, cleared: n });
+    }
     if (p === '/api/me' && M === 'GET') return sendJSON(res, 200, { role, name: Group.person(uid)?.name || '', bets: Bets.list(uid).length, claimable: OWNER_CODE ? Bets.unowned() : 0 });
     if (p === '/api/me/name' && M === 'POST') {
       try { return sendJSON(res, 200, { name: Group.setName(uid, (await readBody(req)).name) }); } catch (e) { return sendJSON(res, 400, { error: e.message }); }
@@ -980,8 +1176,25 @@ const server = http.createServer(async (req, res) => {
     if (!file.startsWith(PUBLIC)) return sendJSON(res, 403, { error: 'Forbidden' });
     fs.readFile(file, (err, buf) => {
       if (err) return sendJSON(res, 404, { error: 'Not found' });
-      res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
-      res.end(buf);
+      const type = TYPES[path.extname(file)] || 'application/octet-stream';
+      /* `no-cache` means "revalidate every time", not "never store" -- but with no validator to revalidate
+         against, every load re-downloaded the whole client. An ETag keeps silent updates exactly as they
+         were (the browser still asks on every load, so a push is picked up at once) and turns the answer
+         into an empty 304 whenever the file has not changed. */
+      const tag = `W/"${buf.length.toString(16)}-${Math.round(fileMtime(file)).toString(16)}"`;
+      const head = { 'content-type': type, 'cache-control': 'no-cache', etag: tag };
+      if (req.headers['if-none-match'] === tag) { res.writeHead(304, { etag: tag, 'cache-control': 'no-cache' }); return res.end(); }
+      const enc = buf.length >= COMPRESS_MIN && COMPRESSIBLE.test(type) ? encFor(res) : null;
+      if (!enc) { res.writeHead(200, head); return res.end(buf); }
+      const key = `${file}|${fileMtime(file)}|${enc}`;
+      let out = zCache.get(key);
+      if (!out) {
+        try { out = zip(buf, enc); } catch { res.writeHead(200, head); return res.end(buf); }
+        if (zCache.size > 200) zCache.clear();
+        zCache.set(key, out);
+      }
+      res.writeHead(200, { ...head, 'content-encoding': enc, vary: 'accept-encoding', 'content-length': out.length });
+      res.end(out);
     });
   } catch (e) {
     log('http', p, e.message);
