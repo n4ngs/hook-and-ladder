@@ -87,7 +87,13 @@ function edgeFit(kind, line, pNoVig) {
   return edgePmf(kind, (lo + hi) / 2);
 }
 // Chance for side A with the cut removed. Moneylines use the power method: find k with pA^k + pB^k = 1.
+/* Two prices in, one probability out. Shin's method (shinNoVig in core.js) for every market, with the
+   old plain normalisation and power method kept as the fallback so an odd market degrades instead of
+   dropping off the board. One method everywhere also means the pregame and live paths can never read the
+   same two prices differently. */
 function edgeNoVig(mkt, a, b) {
+  const shin = shinNoVig(a, b);
+  if (shin != null && shin > 0 && shin < 1) return shin;
   if (mkt !== 'ml') return noVig(a, b)?.a ?? null;
   const pa = imp(a), pb = imp(b);
   if (!(pa > 0 && pb > 0 && pa < 1 && pb < 1)) return null;
@@ -135,7 +141,7 @@ function edgeMarketP(g, mkt, side, line, exclude) {
     const a = sideOf(L, mkt, side), b = sideOf(L, mkt, other);
     if (!a || !b || a.odds == null || b.odds == null) continue;
     if (mkt !== 'ml' && a.line !== line) continue;
-    const p = mkt === 'ml' ? edgeNoVig('ml', a.odds, b.odds) : noVig(a.odds, b.odds)?.a;
+    const p = edgeNoVig(mkt, a.odds, b.odds);
     if (p != null) ps.push(p);
   }
   if (ps.length < 2) return null;

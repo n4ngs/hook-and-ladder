@@ -100,6 +100,38 @@ function noVig(a, b) {
   if (pa == null || pb == null) return null;
   return { a: pa / (pa + pb), b: pb / (pa + pb), hold: pa + pb - 1 };
 }
+/* ---------------------------------------------------------------- de-vigging, done properly
+
+   Turning two prices into a probability is the calculation everything else here stands on, and the
+   obvious way is wrong in a known direction. Plain normalisation assumes the book spreads its cut evenly
+   across both sides; it does not. Shin (1992, 1993) models the overround as protection against a share z
+   of informed money, which falls harder on the longshot, so the longshot's implied price overstates its
+   true chance. Inverting that model:
+
+       p_i = [ sqrt(z^2 + 4(1-z) * pi_i^2 / PI) - z ] / (2(1-z)),   z chosen so the p_i sum to 1
+
+   Strumbelj (2014) found it better calibrated than both plain normalisation and the power method this
+   replaces. It matters most on lopsided prices, which college football has far more of than the NFL:
+   a -2000 favourite over an FCS side is an ordinary Saturday here. Near -110/-110 every method agrees to
+   a hundredth of a point, and -110/-110 returns exactly 50/50 as it must. It is a root-find, but a cheap
+   one — well under a microsecond a call. Nothing here forecasts; it is a better reading of a published
+   price. */
+const SHIN_ITERS = 40;
+function shinNoVig(oddsA, oddsB) {
+  const a = imp(oddsA), b = imp(oddsB);
+  if (!(a > 0 && b > 0)) return null;
+  const PI = a + b;
+  if (!(PI > 1)) return a / PI;              // no overround to undo (or a crossed market)
+  const pOf = (pi, z) => (Math.sqrt(z * z + 4 * (1 - z) * pi * pi / PI) - z) / (2 * (1 - z));
+  let lo = 0, hi = 0.9;
+  for (let i = 0; i < SHIN_ITERS; i++) {
+    const m = (lo + hi) / 2;
+    if (pOf(a, m) + pOf(b, m) > 1) lo = m; else hi = m;
+  }
+  const p = pOf(a, (lo + hi) / 2);
+  return p > 0 && p < 1 ? p : null;
+}
+
 const toWin = (stake, o) => (stake && o != null ? stake * (dec(o) - 1) : null);
 // Standard normal CDF and its inverse (Acklam), for turning win chances into point spreads.
 function ncdf(x) {
