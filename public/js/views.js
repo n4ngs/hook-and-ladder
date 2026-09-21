@@ -118,6 +118,7 @@ function renderLive() {
   renderMoveCards();
   if (typeof edgeLive === 'function' && !(typeof limBreak === 'function' && limBreak())) edgeLive(); // Edge Finder: top edges on the Live tab (edge.js)
   else $('#edgeTop')?.remove(); // hidden while you're taking a break (limits.js)
+  if (typeof vasRenderLive === 'function') vasRenderLive(); // VAS and who is behind (vas.js)
   renderHero(live, pre);
   renderHeroSide();
 
